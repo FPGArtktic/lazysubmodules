@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+#
+# gitlint rules for commit messages, see "Commit messages" in CONTRIBUTING.md.
+# Run "scripts/build-in-container.sh gitlint"; local hook: "gitlint install-hook".
+
+[general]
+contrib = contrib-body-requires-signed-off-by
+
+[title-max-length]
+line-length = 75
+
+[title-match-regex]
+regex = ^(cli|core|git|manifest|lock|porcelain|tui|build|scripts|ci|release|docs): .+
+
+[body-max-line-length]
+line-length = 75

@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+#
+# golangci-lint v2 configuration for the coding style described in
+# CONTRIBUTING.md (verified with golangci-lint v2.13.2). Run it with
+# "scripts/build-in-container.sh lint".
+version: "2"
+
+run:
+  timeout: 5m
+  relative-path-mode: gomod # exclusion paths below are relative to the go.mod dir
+  # Dependencies come from the committed vendor/ directory; the build container
+  # has no network access. "readonly" would override GOFLAGS=-mod=vendor and
+  # make go/packages look for the module cache.
+  modules-download-mode: vendor
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - errorlint
+    - forbidigo
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - gocritic
+    - godot
+    - goheader
+    - lll
+    - misspell
+    - nestif
+    - nolintlint
+    - revive
+    - unparam
+  settings:
+    errcheck:
+      # Human-readable output written with fmt to an injected io.Writer (the
+      # CLI's stdout/stderr): a failed terminal write cannot be reported
+      # anywhere useful. errcheck already treats os.Stderr, bytes.Buffer and
+      # strings.Builder this way. Matching on the io.Writer static type keeps
+      # writes to concrete files checked, and unlike the std-error-handling
+      # preset this keeps Close, Flush and os.Remove errors checked. Functions
+      # that return a write error (porcelain) must still propagate it.
+      exclude-functions:
+        - fmt.Fprint(io.Writer)
+        - fmt.Fprintf(io.Writer)
+        - fmt.Fprintln(io.Writer)
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+    forbidigo:
+      forbid:
+        - pattern: ^panic$
+          msg: return an error instead; panic is allowed only in cmd/
+        - pattern: ^print(ln)?$
+          msg: use fmt with an explicit io.Writer
+    funlen:
+      lines: 80
+      statements: 50
+      ignore-comments: true
+    gocognit:
+      min-complexity: 20
+    godot:
+      scope: declarations # toplevel/all would flag the Copyright header line
+      period: true
+    goheader:
+      # Matched against the first comment group before `package`, with the
+      # `// ` markers stripped. Fixed text on purpose: {{ YEAR }} is time.Now().
+      # scripts/check-headers.sh covers the files goheader cannot check.
+      template: |-
+        SPDX-License-Identifier: GPL-3.0-only
+        Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+    lll:
+      line-length: 100
+      tab-width: 1
+    misspell:
+      locale: US
+    nestif:
+      min-complexity: 4
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    revive:
+      enable-default-rules: true # without this, listing a rule disables the defaults
+      rules:
+        - name: exported
+          arguments:
+            - check-private-receivers
+            - check-public-interface
+  exclusions:
+    generated: strict
+    rules:
+      - path: _test\.go # long table-driven tests; line length still applies
+        linters:
+          - funlen
+          - gocognit
+      - path: ^cmd/
+        linters:
+          - forbidigo
+        text: "`panic`"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/FPGArtktic/lazysubmodules
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
