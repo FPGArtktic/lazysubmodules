@@ -1,0 +1,256 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+#
+# GoReleaser OSS v2 configuration: archives, checksums, keyless cosign
+# signatures, SBOMs, deb/rpm packages and an optional AUR -bin recipe.
+# Run it through scripts/build-in-container.sh (snapshot, release); check it
+# with "goreleaser check" in the build image (GoReleaser v2.18.1).
+#
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: lazysubmodules
+
+before:
+  hooks:
+    # Fails fast, offline, when vendor/modules.txt does not match go.mod.
+    - go list -mod=vendor ./...
+
+builds:
+  - id: lazysubmodules
+    main: ./cmd/lazysubmodules
+    binary: lazysubmodules
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+      - GOFLAGS=-mod=vendor
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: lazysubmodules
+    ids:
+      - lazysubmodules
+    formats:
+      - tar.gz
+    # -> lazysubmodules_<version>_linux_<arch>.tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds_info:
+      owner: root
+      group: root
+      mtime: "{{ .CommitDate }}"
+    files:
+      - src: LICENSE
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+signs:
+  # Keyless, legacy detached outputs: checksums.txt.sig + checksums.txt.pem.
+  # cosign v3 defaults to --new-bundle-format=true (bundle only, early return) and
+  # --use-signing-config=true (which requires --bundle); both must be turned off
+  # for --output-signature/--output-certificate to be honoured. All four flags are
+  # deprecated in cosign v3 (warnings only, still functional in v3.1.3).
+  - id: cosign-legacy
+    cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - --new-bundle-format=false
+      - --use-signing-config=false
+      - --output-signature=${signature}
+      - --output-certificate=${certificate}
+      - --yes
+      - ${artifact}
+  # Keyless, cosign v3 native bundle: checksums.txt.sigstore.json (forward-compatible; optional).
+  - id: cosign-bundle
+    cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - --bundle=${signature}
+      - --yes
+      - ${artifact}
+
+sboms:
+  - id: archive-sbom
+    artifacts: archive
+    # defaults kept: cmd syft, documents ["{{ .ArtifactName }}.sbom.json"],
+    # args ["$artifact", "--output", "spdx-json=$document", "--enrich", "all"]
+    # Setting env replaces the default env list, so the default variable is
+    # repeated. syft runs inside dist/, hence the relative vendor path: the
+    # dependency licenses are read from vendor/ without network access.
+    env:
+      - SYFT_FILE_METADATA_CATALOGER_ENABLED=true
+      - SYFT_CHECK_FOR_APP_UPDATE=false
+      - SYFT_GOLANG_SEARCH_LOCAL_VENDOR_LICENSES=true
+      - SYFT_GOLANG_LOCAL_VENDOR_DIR=../vendor
+
+nfpms:
+  - id: packages
+    ids:
+      - lazysubmodules
+    package_name: lazysubmodules
+    formats:
+      - deb
+      - rpm
+    vendor: FPGArtktic
+    maintainer: "Mateusz Okulanis <FPGArtktic@outlook.com>"
+    homepage: https://github.com/FPGArtktic/lazysubmodules
+    description: |-
+      Track git submodules by branch, tag, tag pattern or commit.
+      LazySubmodules pins submodules in a lock file and updates them from a
+      command line interface or an interactive terminal interface.
+    license: GPL-3.0-only
+    section: vcs
+    priority: optional
+    bindir: /usr/bin
+    mtime: "{{ .CommitDate }}"
+    dependencies:
+      - git
+    contents:
+      - src: /usr/bin/lazysubmodules
+        dst: /usr/bin/lsm
+        type: symlink
+      - src: LICENSE
+        dst: /usr/share/doc/lazysubmodules/LICENSE
+        file_info:
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        dst: /usr/share/doc/lazysubmodules/README.md
+        file_info:
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+    rpm:
+      summary: Track git submodules by branch, tag, tag pattern or commit
+      group: Development/Tools
+      # default is os.Hostname(), which breaks rpm reproducibility across machines
+      buildhost: lazysubmodules.build
+
+aurs:
+  - name: lazysubmodules-bin
+    ids:
+      - lazysubmodules
+    homepage: https://github.com/FPGArtktic/lazysubmodules
+    description: Track git submodules by branch, tag, tag pattern or commit
+    maintainers:
+      - "Mateusz Okulanis <FPGArtktic at outlook dot com>"
+    license: GPL-3.0-only
+    # `index` returns "" for a missing key; `.Env.AUR_KEY` errors when unset.
+    private_key: '{{ index .Env "AUR_KEY" }}'
+    git_url: ssh://aur@aur.archlinux.org/lazysubmodules-bin.git
+    # The build image pins the host key of aur.archlinux.org in
+    # /etc/ssh/ssh_known_hosts. ssh accepts only that key and writes no
+    # known_hosts file of its own.
+    git_ssh_command: >-
+      ssh -i "{{ .KeyPath }}" -o StrictHostKeyChecking=yes
+      -o UserKnownHostsFile=/dev/null -F /dev/null
+    # Publishing is opt-in: nothing is pushed unless the AUR_KEY secret is set.
+    # "auto" skips pre-releases because pacman's vercmp sorts 0.1.0_rc.1 above
+    # 0.1.0, which would break upgrades to the final release.
+    skip_upload: '{{ if isEnvSet "AUR_KEY" }}auto{{ else }}true{{ end }}'
+    provides:
+      - lazysubmodules
+    conflicts:
+      - lazysubmodules
+    depends:
+      - git
+    commit_author:
+      name: Mateusz Okulanis
+      email: FPGArtktic@outlook.com
+    commit_msg_template: "Update to {{ .Tag }}"
+    package: |-
+      # binary
+      install -Dm755 "./lazysubmodules" "${pkgdir}/usr/bin/lazysubmodules"
+      # short alias
+      ln -s lazysubmodules "${pkgdir}/usr/bin/lsm"
+      # license
+      install -Dm644 "./LICENSE" "${pkgdir}/usr/share/licenses/lazysubmodules/LICENSE"
+      # readme
+      install -Dm644 "./README.md" "${pkgdir}/usr/share/doc/lazysubmodules/README.md"
+
+changelog:
+  use: git
+  sort: asc
+  abbrev: 12
+  filters:
+    exclude:
+      - '^Merge (pull request|branch)'
+  # regexp is matched against the commit subject only (no SHA prefix) -> anchor with ^.
+  # Accepts `sub: x`, `sub(scope): x`, `sub!: x`, `sub(scope)!: x`.
+  groups:
+    - title: CLI
+      regexp: '^cli(\([^)]*\))?!?:'
+      order: 10
+    - title: Core
+      regexp: '^core(\([^)]*\))?!?:'
+      order: 20
+    - title: Git
+      regexp: '^git(\([^)]*\))?!?:'
+      order: 30
+    - title: Manifest
+      regexp: '^manifest(\([^)]*\))?!?:'
+      order: 40
+    - title: Lock
+      regexp: '^lock(\([^)]*\))?!?:'
+      order: 50
+    - title: Porcelain
+      regexp: '^porcelain(\([^)]*\))?!?:'
+      order: 60
+    - title: TUI
+      regexp: '^tui(\([^)]*\))?!?:'
+      order: 70
+    - title: Build
+      regexp: '^build(\([^)]*\))?!?:'
+      order: 80
+    - title: Scripts
+      regexp: '^scripts(\([^)]*\))?!?:'
+      order: 90
+    - title: CI
+      regexp: '^ci(\([^)]*\))?!?:'
+      order: 100
+    - title: Release
+      regexp: '^release(\([^)]*\))?!?:'
+      order: 110
+    - title: Documentation
+      regexp: '^docs(\([^)]*\))?!?:'
+      order: 120
+    - title: Other
+      order: 999
+
+# No docker images: don't write an empty dist/digests.txt during publish.
+docker_digest:
+  disable: true
+
+release:
+  github:
+    owner: FPGArtktic
+    name: lazysubmodules
+  prerelease: auto
+
+snapshot:
+  # e.g. 0.2.1-snapshot-f116494 (hyphen, not '+': '+' ends up in AUR pkgver/URLs)
+  version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
