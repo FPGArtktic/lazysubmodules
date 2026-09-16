@@ -1,0 +1,145 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+#
+# Continuous integration. Every check calls scripts/build-in-container.sh, so
+# CI runs exactly what developers run locally (see CONTRIBUTING.md).
+#
+# The build image is cached as an image archive, keyed by the image reference
+# that the script derives from the Containerfile hash. A changed Containerfile
+# therefore builds and caches a new image. Pull requests cannot write to the
+# cache of main.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Superseded pull request runs are cancelled; every push to main is built.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash # bash --noprofile --norc -eo pipefail
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # gitlint needs the history, GoReleaser the tags
+          persist-credentials: false
+
+      - name: Show container engine
+        run: |
+          podman version
+          id
+          grep "^$(id -un):" /etc/subuid /etc/subgid || echo "no subordinate IDs for $(id -un)"
+
+      - name: Resolve build image
+        id: image
+        run: |
+          ref="$(scripts/build-in-container.sh image-tag)"
+          echo "ref=${ref}" >>"$GITHUB_OUTPUT"
+          echo "archive=${RUNNER_TEMP}/build-image.tar" >>"$GITHUB_OUTPUT"
+
+      - name: Restore build image
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.image.outputs.archive }}
+          key: build-image-${{ steps.image.outputs.ref }}
+
+      - name: image (load)
+        if: steps.cache.outputs.cache-hit == 'true'
+        env:
+          IMAGE_ARCHIVE: ${{ steps.image.outputs.archive }}
+        run: scripts/build-in-container.sh image-load
+
+      - name: image (build)
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          IMAGE_ARCHIVE: ${{ steps.image.outputs.archive }}
+        run: scripts/build-in-container.sh image image-save
+
+      - name: Save build image
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.image.outputs.archive }}
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - name: gitlint
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+        run: |
+          # Pull request: the commits of the pull request. Push: the pushed
+          # commits; the whole history when the push created the branch or
+          # the previous tip is unknown (e.g. after a force push).
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            GITLINT_RANGE="${PR_BASE_SHA}..${PR_HEAD_SHA}"
+          elif [[ "$PUSH_BEFORE" =~ ^[0-9a-f]+$ && ! "$PUSH_BEFORE" =~ ^0+$ ]] &&
+            git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then
+            GITLINT_RANGE="${PUSH_BEFORE}..${PUSH_AFTER}"
+          else
+            GITLINT_RANGE="HEAD"
+          fi
+          export GITLINT_RANGE
+          scripts/build-in-container.sh gitlint
+
+      - name: lint
+        run: scripts/build-in-container.sh lint
+
+      - name: licenses
+        run: scripts/build-in-container.sh licenses
+
+      - name: test
+        run: scripts/build-in-container.sh test
+
+      - name: build
+        run: scripts/build-in-container.sh build
+
+      - name: snapshot
+        run: scripts/build-in-container.sh snapshot
+
+      - name: package-test
+        run: scripts/build-in-container.sh package-test
+
+      - name: Upload snapshot
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: snapshot-dist
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.json
+            dist/*.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  compat:
+    name: compat (git 2.39)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: test-compat
+        run: scripts/build-in-container.sh test-compat
