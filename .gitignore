@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+#
+# Build outputs and local test artifacts.
+
+# Private project notes, kept out of the repository on purpose.
+project.md
+
+# scripts/build-in-container.sh: build writes bin/, snapshot and release dist/.
+/bin/
+/dist/
+
+# Binaries of a plain "go build" on the host.
+/lazysubmodules
+/cmd/lazysubmodules/lazysubmodules
+*.test
+/coverage.out
