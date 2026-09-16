@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+#
+# Release: a pushed version tag is tested and published by GoReleaser through
+# scripts/build-in-container.sh (see CONTRIBUTING.md). The build image is
+# restored from the cache that CI on main writes, or built when it is missing.
+#
+# Publishing to the AUR is optional: without the AUR_KEY secret, GoReleaser
+# skips it.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash # bash --noprofile --norc -eo pipefail
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write # create the GitHub release and upload its assets
+      id-token: write # cosign keyless signing with the GitHub OIDC token
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # GoReleaser needs the tags for the changelog
+          persist-credentials: false
+
+      - name: Resolve build image
+        id: image
+        run: |
+          ref="$(scripts/build-in-container.sh image-tag)"
+          echo "ref=${ref}" >>"$GITHUB_OUTPUT"
+          echo "archive=${RUNNER_TEMP}/build-image.tar" >>"$GITHUB_OUTPUT"
+
+      - name: Restore build image
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.image.outputs.archive }}
+          key: build-image-${{ steps.image.outputs.ref }}
+
+      - name: image (load)
+        if: steps.cache.outputs.cache-hit == 'true'
+        env:
+          IMAGE_ARCHIVE: ${{ steps.image.outputs.archive }}
+        run: scripts/build-in-container.sh image-load
+
+      - name: image (build)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: scripts/build-in-container.sh image
+
+      - name: test
+        run: scripts/build-in-container.sh test
+
+      - name: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUR_KEY: ${{ secrets.AUR_KEY }}
+        run: scripts/build-in-container.sh release
