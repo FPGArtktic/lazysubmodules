@@ -8,7 +8,7 @@
 [![AUR](https://img.shields.io/aur/version/lazysubmodules-git?label=AUR%20lazysubmodules-git)](https://aur.archlinux.org/packages/lazysubmodules-git)
 [![Go version](https://img.shields.io/github/go-mod/go-version/FPGArtktic/lazysubmodules)](go.mod)
 [![Go Reference](https://pkg.go.dev/badge/github.com/FPGArtktic/lazysubmodules.svg)](https://pkg.go.dev/github.com/FPGArtktic/lazysubmodules)
-[![Go Report Card](https://goreportcard.com/badge/github.com/FPGArtktic/lazysubmodules)](https://goreportcard.com/report/github.com/FPGArtktic/lazysubmodules)
+[![Linted by golangci-lint](https://img.shields.io/badge/linted%20by-golangci--lint-00ADD8?logo=go&logoColor=white)](.golangci.yml)
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20amd64%20%7C%20arm64-lightgrey)](#installation)
 ![Made in Poland](https://img.shields.io/badge/made%20in-Poland-DC143C?labelColor=white)
