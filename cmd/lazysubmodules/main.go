@@ -21,7 +21,9 @@ import (
 )
 
 // Build information, set at link time with
-// -ldflags "-X main.version=... -X main.commit=... -X main.date=...".
+// -ldflags "-X main.version=... -X main.commit=... -X main.date=...". date is
+// the commit date, not the build date, so that a rebuild of a commit gives
+// the same binary.
 var version, commit, date = "dev", "none", "unknown" //nolint:gochecknoglobals // set by -ldflags
 
 const progName = "lazysubmodules"
@@ -69,9 +71,10 @@ func commands() []command {
 		tuiCommand(),
 		{
 			name:    "version",
-			summary: "print version, commit and build date",
-			help:    "Print the version, the source commit and the build date.",
-			run:     runVersion,
+			summary: "print version, commit and commit date",
+			help: "Print the version, the source commit and the commit date. Values that\n" +
+				"the build did not record are printed as \"dev\", \"none\" and \"unknown\".",
+			run: runVersion,
 		},
 		{
 			name:     "help",
@@ -190,7 +193,9 @@ type buildInfo struct {
 }
 
 // resolveBuildInfo completes the link-time values of a binary built without
-// -ldflags with the module version and VCS data recorded by the go command.
+// -ldflags with the module version and VCS data recorded by the go command;
+// vcs.time is the commit date as well. A module downloaded by "go install"
+// has no VCS data.
 func resolveBuildInfo(linked buildInfo, bi *debug.BuildInfo, ok bool) buildInfo {
 	res := linked
 	if linked.version != "dev" || !ok || bi == nil {

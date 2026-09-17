@@ -26,7 +26,7 @@ Commands:
   verify   check that lock file, gitlinks and checkouts agree
   foreach  run a command in every managed submodule
   tui      start the interactive terminal interface
-  version  print version, commit and build date
+  version  print version, commit and commit date
   help     show help for lazysubmodules or a command
 
 Run 'lazysubmodules <command> -h' for help on a command.
@@ -34,7 +34,8 @@ Run 'lazysubmodules <command> -h' for help on a command.
 
 const wantVersionHelp = `Usage: lazysubmodules version
 
-Print the version, the source commit and the build date.
+Print the version, the source commit and the commit date. Values that
+the build did not record are printed as "dev", "none" and "unknown".
 `
 
 // runArgs runs the command line outside of every repository and returns

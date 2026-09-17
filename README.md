@@ -712,12 +712,13 @@ message `lazysubmodules: tui requires a terminal`.
 ### `version`
 
 `version` (or `--version`) prints the version, the source commit and the
-build date:
+commit date, the date of that commit in UTC. It is not the build date, so
+a rebuild of the same commit prints the same:
 
 ```text
 lazysubmodules 1.2.3
 commit: <commit SHA>
-date: <build date>
+date: <commit date, such as 2026-09-17T11:14:07Z>
 ```
 
 Binaries built with `go install` take this information from the Go build

@@ -30,8 +30,12 @@ builds:
       - GOFLAGS=-mod=vendor
     flags:
       - -trimpath
+    # The date is that of the commit, not of the build, so that building the
+    # same commit again gives the same binary.
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+      - >-
+        -s -w -X main.version={{.Version}} -X main.commit={{.Commit}}
+        -X main.date={{ .CommitDate }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:

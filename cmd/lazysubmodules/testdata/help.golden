@@ -98,7 +98,8 @@ already known.
 $ lazysubmodules version -h
 Usage: lazysubmodules version
 
-Print the version, the source commit and the build date.
+Print the version, the source commit and the commit date. Values that
+the build did not record are printed as "dev", "none" and "unknown".
 
 $ lazysubmodules help -h
 Usage: lazysubmodules help [<command>]

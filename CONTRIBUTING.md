@@ -594,7 +594,9 @@ package. A new dependency needs a good reason and a compatible license.
   keys live in a variable rather than in the repository because whoever
   pushes a tag controls the files of the tagged commit, while variables
   can only be changed in the repository settings.
-- GoReleaser injects the version, commit and build date with `-ldflags`, and
+- GoReleaser injects the version, commit and commit date with `-ldflags`
+  (the commit date rather than the build date, so that a rebuild of the
+  same commit gives identical archives and packages), and
   signs `checksums.txt` with cosign keyless signing.
 - No AUR package is published yet. The planned `lazysubmodules-git`
   package would build from this repository; register it in the AUR before
