@@ -4,6 +4,7 @@
 package core_test
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -316,6 +317,21 @@ func TestCommitMessageLongValues(t *testing.T) {
 		{"x", "v*", "wipe-1", "manifest: update x to wipe-1"},
 		{"Wip", "v*", "v1", "manifest: update 1 submodule"},
 		{"a\tb", "v*", "v1", `manifest: update "a\tb" to v1`},
+		// gitlint lowercases the subject in Python, which takes "ı" for
+		// "i" and turns "İ" into "i" and a combining dot, a word break.
+		{"x", "v*", "w\u0131p", "manifest: update x"},
+		{"x", "v*", "\u0130wip", "manifest: update x"},
+		{"x", "v*", "w\u0130p", "manifest: update x to w\u0130p"},
+		{"w\u0131p", "v*", "v1", "manifest: update 1 submodule"},
+		// Only ASCII letters and digits make words here, which also
+		// rejects some subjects that gitlint accepts.
+		{"x", "v*", "\u017cwip", "manifest: update x"},
+		// Refs are quoted like names.
+		{"x", "v*", "v1\u2028x", `manifest: update x to "v1\u2028x"`},
+		{"x", "v*", "v1\u0085x", `manifest: update x to "v1\u0085x"`},
+		{"x", "v*", "v1\x85x", `manifest: update x to "v1\x85x"`},
+		{"x", "v*", "v1\u00a0", `manifest: update x to "v1\u00a0"`},
+		{"x", "v*", `v1"x`, `manifest: update x to "v1\"x"`},
 	} {
 		msg := core.CommitMessage([]core.Change{change(c.name, c.ref, c.tag)})
 		subject, _, _ := strings.Cut(msg, "\n")
@@ -351,6 +367,123 @@ func TestCommitMessageLongValues(t *testing.T) {
 	}
 }
 
+func TestCommitMessageSplitValues(t *testing.T) {
+	t.Parallel()
+	block := func(indent string) string {
+		return indent + "Tracking mode: tag-pattern v6.6.*\n" +
+			indent + "Old: a1b2c3d4e5f6 (v6.6.8)\n" +
+			indent + "New: e4f5a6b7c8d9 (v6.6.9)\n"
+	}
+	two := func(name string) []core.Change {
+		return []core.Change{tagChange(name), tagChange("b")}
+	}
+	second := "\nSubmodule \"b\":\n" + block("  ")
+	name64 := strings.Repeat("n", 64)
+	// The quoted name starts at column 3; the 72nd character of the
+	// quoted name is a space, so the first piece ends before it.
+	words := "x" + strings.Repeat(" word", 20)
+	longTag := tagChange("lib")
+	longTag.New.Ref = "v" + strings.Repeat("1", 100)
+	quotedTag := tagChange("lib")
+	quotedTag.New.Ref = "v1\u2028x"
+	quotedTag.Submodule.Ref = "v*\u3000"
+	for name, c := range map[string]struct {
+		changes []core.Change
+		want    string
+	}{
+		"heading of 76 characters": {two(name64), "manifest: update 2 submodules\n\n" +
+			"Submodule\n" +
+			"  \"" + name64 + "\":\n" + block("  ") + second},
+		"heading split before a space": {two(words), "manifest: update 2 submodules\n\n" +
+			"Submodule\n" +
+			"  \"x" + strings.Repeat(" word", 14) + "\n" +
+			"  " + strings.Repeat(" word", 6) + "\":\n" + block("  ") + second},
+		"spaces in a row": {two("a  b   c"), "manifest: update 2 submodules\n\n" +
+			`Submodule "a\x20 b\x20\x20 c":` + "\n" + block("  ") + second},
+		"ref longer than a line": {[]core.Change{longTag}, "manifest: update lib\n\n" +
+			"Tracking mode: tag-pattern v6.6.*\n" +
+			"Old: a1b2c3d4e5f6 (v6.6.8)\n" +
+			"New: e4f5a6b7c8d9\n" +
+			"  (v" + strings.Repeat("1", 71) + "\n" +
+			"  " + strings.Repeat("1", 29) + ")\n"},
+		"quoted refs": {[]core.Change{quotedTag}, `manifest: update lib to "v1\u2028x"` + "\n\n" +
+			`Tracking mode: tag-pattern "v*\u3000"` + "\n" +
+			"Old: a1b2c3d4e5f6 (v6.6.8)\n" +
+			`New: e4f5a6b7c8d9 ("v1\u2028x")` + "\n"},
+	} {
+		if got := core.CommitMessage(c.changes); got != c.want {
+			t.Errorf("%s: CommitMessage =\n%s\nwant\n%s", name, got, c.want)
+		}
+	}
+}
+
+// hostileChanges returns changes whose names and refs test the rules for
+// commit messages: values longer than a line, spaces in a row, line
+// separators, white space, invalid UTF-8 and letters that gitlint matches
+// case-insensitively.
+func hostileChanges() map[string][]core.Change {
+	withTag := func(tag string) core.Change {
+		c := tagChange("lib")
+		c.New.Ref = tag
+		return c
+	}
+	withPattern := func(pattern string) core.Change {
+		c := tagChange("lib")
+		c.Submodule.Ref = pattern
+		return c
+	}
+	name64 := strings.Repeat("n", 64)
+	return map[string][]core.Change{
+		"long heading":         {tagChange(name64), tagChange("b")},
+		"very long heading":    {tagChange(strings.Repeat(name64, 4)), tagChange("b")},
+		"words in heading":     {tagChange(strings.Repeat("word ", 30)), tagChange("b")},
+		"spaces in heading":    {tagChange("a" + strings.Repeat(" ", 80) + "b"), tagChange("c")},
+		"long tag":             {withTag("v" + strings.Repeat("1", 78))},
+		"very long tag":        {withTag("v" + strings.Repeat("1", 300)), tagChange("b")},
+		"line separator":       {withTag("v1\u2028x")},
+		"next line":            {withTag("v1\u0085x"), tagChange("b")},
+		"invalid UTF-8":        {withTag("v1\xffx")},
+		"no-break space":       {withTag("v1\u00a0")},
+		"space in pattern":     {withPattern("v*\u3000")},
+		"separator in pattern": {withPattern("v\u2029*")},
+		"dotless i":            {withTag("w\u0131p")},
+		"dotted I":             {withTag("\u0130wip")},
+		"dotless name":         {tagChange("w\u0131p")},
+	}
+}
+
+func TestCommitMessageHostile(t *testing.T) {
+	t.Parallel()
+	for name, changes := range hostileChanges() {
+		msg := core.CommitMessage(changes)
+		if msg == "" {
+			t.Errorf("%s: no message", name)
+			continue
+		}
+		t.Logf("%s:\n%s", name, msg)
+		lintMessage(t, msg+"\n"+signOff)
+	}
+}
+
+// TestCommitMessageKeptByGit commits the messages with "git commit -s":
+// git must keep every line and add the sign-off after a blank line.
+func TestCommitMessageKeptByGit(t *testing.T) {
+	t.Parallel()
+	r := gittest.Runner(t)
+	dir := gittest.InitRepo(t, gittest.SHA1)
+	for name, changes := range hostileChanges() {
+		msg := core.CommitMessage(changes)
+		gittest.WriteFile(t, filepath.Join(dir, "f"), name+"\n")
+		gittest.Git(t, dir, "add", "f")
+		if err := r.Commit(t.Context(), dir, msg); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got, want := headMessage(t, dir), msg+"\n"+signOff; got != want {
+			t.Errorf("%s: git recorded\n%s\nwant\n%s", name, got, want)
+		}
+	}
+}
+
 // TestCommitMessageGitlint runs the gitlint tool of the build image, with
 // the repository configuration, on generated messages.
 func TestCommitMessageGitlint(t *testing.T) {
@@ -367,14 +500,16 @@ func TestCommitMessageGitlint(t *testing.T) {
 	fresh.Old, fresh.OldHead, fresh.Init = nil, "", true
 	initialized := unchanged("theme")
 	initialized.Init, initialized.OldHead = true, ""
-	for name, changes := range map[string][]core.Change{
+	cases := map[string][]core.Change{
 		"single":      {tagChange("kernel")},
 		"multiple":    {tagChange("kernel"), fresh, initialized, tagChange("u-boot")},
 		"initialized": {initialized, tagChange("kernel")},
 		"long name":   {tagChange(strings.Repeat("k", 70))},
 		"wip":         {tagChange("wip")},
 		"colon name":  {tagChange("a: b")},
-	} {
+	}
+	maps.Copy(cases, hostileChanges())
+	for name, changes := range cases {
 		file := filepath.Join(t.TempDir(), "msg")
 		msg := core.CommitMessage(changes) + "\n" + signOff + "\n"
 		if err := os.WriteFile(file, []byte(msg), 0o600); err != nil {

@@ -443,9 +443,28 @@ Details:
 - **No previous lock entry:** the old line reads
   `Old: <sha> (unlocked)`, or `Old: none` when the submodule was not checked
   out either.
-- **Long subjects:** a subject longer than 75 characters is shortened to
-  `manifest: update <name>`, or to `manifest: update 1 submodule`.
-- **Line length:** lines are kept within 75 columns where possible.
+- **Long subjects:** a subject longer than 75 characters, or one that
+  would break another subject rule (trailing punctuation or white space,
+  the word "WIP" in any case), is shortened to `manifest: update <name>`,
+  or to `manifest: update 1 submodule`.
+- **Unusual characters:** a name or ref that is not valid UTF-8, or that
+  contains quotes, backslashes or characters that are not printable (such
+  as tabs or line separators), is quoted, as in the other output. The
+  heading always quotes the name, and writes a space that is followed by
+  another space as `\x20`.
+- **Line length:** a body line longer than 75 columns continues on the
+  next line, indented by two more spaces: the ref, or in a heading the
+  quoted name, moves there. A ref or name that is still too long is split
+  across several such lines, never after a space:
+
+  ```text
+  Submodule
+    "a-submodule-whose-name-is-far-too-long-to-fit-on-one-line-with-the-headi
+    ng":
+  ```
+
+  With the subject rules above, the message passes the `.gitlint` rules
+  whatever the names and refs are.
 
 ### Network policy
 

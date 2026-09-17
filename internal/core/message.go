@@ -24,6 +24,9 @@ const (
 	// blockIndent indents the lines of one submodule in a message that
 	// lists several, and continued lines.
 	blockIndent = "  "
+	// headingWord starts the heading of a submodule in a message that
+	// lists several.
+	headingWord = "Submodule"
 	// wipWord is a word that the rules forbid in a subject.
 	wipWord = "wip"
 	// titlePunctuation lists the characters a subject may not end with.
@@ -51,14 +54,22 @@ const (
 // (Change.OldGitlink), with the ref of the previous lock entry when that
 // entry records the same commit; without a previous lock entry, the old
 // line is "Old: <commit> (unlocked)", and it is "Old: none" when the
-// superproject recorded no commit. For
-// several submodules, the subject is "manifest: update <N> submodules" and
-// the body has one block per submodule, separated by blank lines: a
-// heading `Submodule "<name>":` followed by the three lines, indented by
-// two spaces. The quoted heading keeps git from taking the last block for
-// trailers, so "git commit -s" adds the sign-off after a blank line. A body
-// line longer than 75 characters continues on the next line, indented by
-// two more spaces, where the line has a ref to move there.
+// superproject recorded no commit. For several submodules, the subject is
+// "manifest: update <N> submodules" and the body has one block per
+// submodule, separated by blank lines: a heading `Submodule "<name>":`
+// followed by the three lines, indented by two spaces. The heading quotes
+// the name as a Go string literal, and writes a space that another space
+// follows as \x20. It keeps git from taking the last block for trailers,
+// so "git commit -s" adds the sign-off after a blank line.
+//
+// Names and refs are shown as in other messages of this package: quoted
+// when they are not valid UTF-8 or contain quotes, backslashes or
+// characters that are not printable, such as line separators. A line
+// longer than 75 characters continues on the next lines, indented by two
+// more spaces: the ref, or the quoted name and colon of a heading, moves
+// there, split into pieces that fit and never end with a space. Every line
+// of the message therefore passes the length and white space rules,
+// whatever the names and refs.
 //
 // Context: any; the message has no Signed-off-by trailer, which "git commit
 // -s" adds.
@@ -83,7 +94,8 @@ func CommitMessage(changes []Change) string {
 	}
 	fmt.Fprintf(&b, "%s%d submodules\n", subjectPrefix, len(changed))
 	for _, c := range changed {
-		fmt.Fprintf(&b, "\nSubmodule %s:\n", strconv.Quote(c.Submodule.Name))
+		b.WriteString("\n")
+		writeLine(&b, "", headingWord, headingName(c.Submodule.Name)+":")
 		writeBody(&b, c, blockIndent)
 	}
 	return b.String()
@@ -110,34 +122,77 @@ func shownRef(res Resolution) string {
 	if res.Mode == manifest.ModeCommit {
 		return abbrev(res.Commit)
 	}
-	return res.Ref
+	return displayName(res.Ref)
 }
 
 // validSubject reports whether s satisfies the subject rules: at most
-// maxLineLen characters, no hard tab, no trailing white space or
-// punctuation, and no word "WIP" in any case.
+// maxLineLen characters, all of them printable (no tab or line separator),
+// no trailing white space or punctuation, and no word "WIP" in any case.
 func validSubject(s string) bool {
 	last, _ := utf8.DecodeLastRuneInString(s)
-	if utf8.RuneCountInString(s) > maxLineLen || strings.ContainsRune(s, '\t') ||
+	if utf8.RuneCountInString(s) > maxLineLen || !utf8.ValidString(s) ||
+		strings.ContainsFunc(s, func(c rune) bool { return !unicode.IsPrint(c) }) ||
 		unicode.IsSpace(last) || strings.ContainsRune(titlePunctuation, last) {
 		return false
 	}
+	return !containsWord(s, wipWord)
+}
+
+// containsWord reports whether s contains word, an ASCII word, in any case,
+// as the case-insensitive word match of gitlint finds it. That match runs
+// in Python on the lowercased subject, which differs from Go in two ways:
+//
+//   - Python lowercases "İ" to "i" and a combining dot, and takes "ı", "ſ"
+//     and the Kelvin sign for "i", "s" and "k".
+//   - Words are made of the characters that Python counts as letters and
+//     digits, which vary with its Unicode version.
+//
+// The first is mapped here; for the second, a word is a run of ASCII
+// letters, digits and underscores. Every word that gitlint finds is then
+// found here, and some more, which only makes the subject shorter.
+func containsWord(s, word string) bool {
+	s = strings.NewReplacer(
+		"\u0130", "i\u0307", // capital I with dot above
+		"\u0131", "i", // dotless i
+		"\u017f", "s", // long s
+		"\u212a", "k", // Kelvin sign
+	).Replace(s)
 	words := strings.FieldsFunc(s, func(c rune) bool {
-		return c != '_' && !unicode.IsLetter(c) && !unicode.IsDigit(c)
+		return c != '_' && (c >= utf8.RuneSelf || !unicode.IsLetter(c) && !unicode.IsDigit(c))
 	})
 	for _, w := range words {
-		if strings.EqualFold(w, wipWord) {
-			return false
+		if strings.EqualFold(w, word) {
+			return true
 		}
 	}
-	return true
+	return false
+}
+
+// headingName returns the quoted name of a heading: a Go string literal
+// in which a space that another space follows is written as \x20. A
+// heading split across lines can then always end a line before a space.
+func headingName(name string) string {
+	quoted := strconv.Quote(name)
+	var b strings.Builder
+	for i, c := range quoted {
+		if c == ' ' && strings.HasPrefix(quoted[i+1:], " ") {
+			b.WriteString(`\x20`)
+			continue
+		}
+		b.WriteRune(c)
+	}
+	return b.String()
 }
 
 // writeBody writes the three lines describing a change, each prefixed with
 // indent.
 func writeBody(b *strings.Builder, c Change, indent string) {
 	sub := c.Submodule
-	writeLine(b, indent, "Tracking mode: "+string(sub.Mode), sub.Ref)
+	ref := sub.Ref
+	if ref != "" {
+		ref = displayName(ref)
+	}
+	writeLine(b, indent, "Tracking mode: "+string(sub.Mode), ref)
 	old := "Old: " + abbrev(c.OldGitlink)
 	switch {
 	case c.OldGitlink == "":
@@ -163,23 +218,34 @@ func refNote(mode manifest.Mode, ref string) string {
 	if mode == manifest.ModeCommit {
 		return ""
 	}
-	return "(" + ref + ")"
+	return "(" + displayName(ref) + ")"
 }
 
 // writeLine writes "<indent><head> <tail>". When that line is too long, the
-// tail continues on the next line, indented by two more spaces.
+// tail continues on the next lines, indented by two more spaces, in pieces
+// that fit. head is short, and tail has no two spaces in a row.
 func writeLine(b *strings.Builder, indent, head, tail string) {
 	b.WriteString(indent)
 	b.WriteString(head)
-	switch {
-	case tail == "":
-	case utf8.RuneCountInString(indent+head+" "+tail) <= maxLineLen:
+	if tail != "" && utf8.RuneCountInString(indent+head+" "+tail) <= maxLineLen {
 		b.WriteString(" ")
 		b.WriteString(tail)
-	default:
-		b.WriteString("\n")
-		b.WriteString(indent + blockIndent)
-		b.WriteString(tail)
+		tail = ""
 	}
 	b.WriteString("\n")
+	indent += blockIndent
+	width := maxLineLen - utf8.RuneCountInString(indent)
+	for rest := []rune(tail); len(rest) > 0; {
+		n := min(width, len(rest))
+		// A line must not end with white space, which git would also
+		// remove. The piece then ends before it, and the next piece
+		// starts with it.
+		for n > 1 && n < len(rest) && unicode.IsSpace(rest[n-1]) {
+			n--
+		}
+		b.WriteString(indent)
+		b.WriteString(string(rest[:n]))
+		b.WriteString("\n")
+		rest = rest[n:]
+	}
 }
