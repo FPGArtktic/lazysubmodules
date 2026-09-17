@@ -628,11 +628,8 @@ func TestUpdateNotRepository(t *testing.T) {
 				{Fetch: true, Commit: true},
 			} {
 				res, err := r.Update(t.Context(), opts)
-				what := fmt.Sprintf("Update(%+v)", opts)
-				wantErr(t, what, err, core.ErrRefused, core.ErrNotRepository)
-				if err == nil || err.Error() != want || len(res.Changes) != 0 {
-					t.Errorf("%s = %+v, %v\nwant %s", what, res, err, want)
-				}
+				wantRefusal(t, fmt.Sprintf("Update(%+v)", opts), res, err, want,
+					core.ErrNotRepository)
 			}
 			res, err := r.Fetch(t.Context(), nil, nil)
 			wantErr(t, "Fetch", err, core.ErrNotRepository, core.ErrRefused)

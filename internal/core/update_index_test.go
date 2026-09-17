@@ -282,13 +282,9 @@ func TestUpdateUnmergedFiles(t *testing.T) {
 	// Git cannot commit before the conflicts are resolved.
 	for _, opts := range []core.UpdateOptions{{Commit: true}, {Commit: true, DryRun: true}} {
 		res, err := f.update(opts)
-		what := fmt.Sprintf("Update(%+v)", opts)
-		want := "refused: the index has unresolved merge conflicts: " + manifest.File + ", " +
-			lock.File
-		wantErr(t, what, err, core.ErrRefused, core.ErrUnmergedIndex)
-		if err == nil || err.Error() != want || len(res.Changes) != 0 {
-			t.Errorf("%s = %+v, %v\nwant %s", what, res, err, want)
-		}
+		wantRefusal(t, fmt.Sprintf("Update(%+v)", opts), res, err,
+			"refused: the index has unresolved merge conflicts: "+manifest.File+", "+lock.File,
+			core.ErrUnmergedIndex)
 	}
 	wantSameTree(t, "refused update", before, treeState(t, d))
 

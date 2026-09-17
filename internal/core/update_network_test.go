@@ -153,10 +153,7 @@ func TestUpdateOfflineInitPartialClone(t *testing.T) {
 					}
 					continue
 				}
-				wantErr(t, what, err, core.ErrRefused, core.ErrUninitialized)
-				if err == nil || err.Error() != want || len(res.Changes) != 0 {
-					t.Errorf("%s = %+v, %v\nwant %s", what, res, err, want)
-				}
+				wantRefusal(t, what, res, err, want, core.ErrUninitialized)
 			}
 			wantSameTree(t, "refused update", before, treeState(t, f.super.Dir))
 			if got := missingObjects(t, module, inModule...); !slices.Equal(got, missing) {
