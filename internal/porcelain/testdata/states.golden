@@ -1,0 +1,10 @@
+# lsm-porcelain v1
+kernel	kernel	tag-pattern	v6.6.*	v6.6.9	a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0	a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0	ok
+u-boot	bootloader/u-boot	branch	main	main	d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3	d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3	behind
+fpga.core	ip/fpga-core	tag	v2.3.1	v2.3.1	0718ab2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a	a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0	drift
+app	apps/app	tag	v1.2.0	v1.2.0	d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3	d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3	dirty
+theme	docs/theme	tag	v1.0.0	v1.0.0	a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0		uninitialized
+broken	libs/broken	tag	v9.9.9	v1.0.0	0718ab2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a	0718ab2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a	missing-ref
+legacy	vendor/legacy					0718ab2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a	unmanaged
+crypto lib	libs/crypto lib	commit	d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3	d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3	d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3	d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3	ok
+"we\"ird\\name"	"odd\tpath"	tag	"v1.0.0\033]0;pwned\a"	"v1.0.0\nv1.0.1"	5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b	5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b	ok
