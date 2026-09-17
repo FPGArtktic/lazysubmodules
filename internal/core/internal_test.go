@@ -487,6 +487,9 @@ func TestLocateRepository(t *testing.T) {
 	if dir, ok := loc.refDir(); loc.repo != git.RepoUsable || !ok || dir != module {
 		t.Errorf("deinitialized: repo %v, refDir %q, %t", loc.repo, dir, ok)
 	}
+	if err := loc.initRefusal(sub); err != nil {
+		t.Errorf("deinitialized: initRefusal = %v", err)
+	}
 	loc = locate(explicit)
 	if dir, ok := loc.refDir(); ok != (loc.repo == git.RepoUsable) ||
 		(ok && dir != module) || loc.repo == git.RepoInvalid {
@@ -497,8 +500,9 @@ func TestLocateRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	loc = locate(plain)
-	if _, ok := loc.refDir(); loc.repo != git.RepoMissing || ok {
-		t.Errorf("removed: repo %v, refDir %t", loc.repo, ok)
+	if _, ok := loc.refDir(); loc.repo != git.RepoMissing || ok ||
+		loc.initRefusal(sub) != nil {
+		t.Errorf("removed: repo %v, refDir %t, initRefusal %v", loc.repo, ok, loc.initRefusal(sub))
 	}
 
 	// An empty directory in place of the repository.
@@ -507,8 +511,15 @@ func TestLocateRepository(t *testing.T) {
 	}
 	for _, r := range []*Repo{plain, explicit} {
 		loc = locate(r)
-		if _, ok := loc.refDir(); loc.repo != git.RepoInvalid || ok {
-			t.Errorf("empty: repo %v, refDir %t", loc.repo, ok)
+		err := loc.initRefusal(sub)
+		want := "lib: refused: the submodule repository directory is not a repository: " +
+			module + " (remove it)"
+		if _, ok := loc.refDir(); loc.repo != git.RepoInvalid || ok ||
+			!errors.Is(err, ErrNotRepository) || err.Error() != want {
+			t.Errorf("empty: repo %v, refDir %t, initRefusal %v", loc.repo, ok, err)
+		}
+		if got := uninitializedReason(loc); !strings.Contains(got, "not a repository") {
+			t.Errorf("empty: reason %q", got)
 		}
 	}
 

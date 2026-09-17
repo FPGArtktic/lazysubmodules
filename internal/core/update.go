@@ -154,10 +154,12 @@ type UpdateResult struct {
 // selected submodule are fetched from origin before they are resolved.
 //
 // Update refuses when a selected submodule has uncommitted changes, has no
-// gitlink in the index, has a path through a symbolic link, is not
-// initialized and cannot be initialized offline (no repository, or one
-// that lacks the recorded commit or objects of it), or has an invalid
-// or missing ref. With opts.Commit, Update also refuses while the index has
+// gitlink in the index, has a path through a symbolic link, has an invalid
+// or missing ref, or is not initialized and has no usable url in
+// .gitmodules, has something other than a repository in the place of its
+// repository, or cannot be initialized offline (no repository without
+// opts.Fetch, or one that lacks the commit recorded in the superproject or
+// objects of it). With opts.Commit, Update also refuses while the index has
 // merge conflicts, and when the commit would include changes that concern
 // no selected submodule: staged changes of other paths than .gitmodules,
 // the lock file and the selected submodules, or a variable of .gitmodules
@@ -186,11 +188,11 @@ type UpdateResult struct {
 // Return: the changes and the new commit; an empty result when there is no
 // managed submodule and no name is given; an error wrapping ErrNotFound or
 // ErrUnmanaged for a name that cannot be updated; an error joining the
-// refusals, each wrapping ErrRefused (ErrDirty, ErrNotSubmodule,
-// ErrUninitialized, ErrSymlinkPath, ErrMissingRef, ErrUnmergedIndex or
-// ErrUnrelatedStaged); an error from reading or writing the working tree
-// copy of .gitmodules or the lock file, such as one wrapping
-// git.ErrNotRegularFile for a copy that is not a regular file,
+// refusals, each wrapping ErrRefused (ErrDirty, ErrNotSubmodule, ErrNoURL,
+// ErrNotRepository, ErrUninitialized, ErrSymlinkPath, ErrMissingRef,
+// ErrUnmergedIndex or ErrUnrelatedStaged); an error from reading or
+// writing the working tree copy of .gitmodules or the lock file, such as
+// one wrapping git.ErrNotRegularFile for a copy that is not a regular file,
 // manifest.ErrInvalidMode or lock.ErrInvalidEntry; or *git.Error, also for
 // a copy in the index or HEAD that git cannot read, such as one missing
 // from a partial clone. A failure after the first modification is joined
@@ -398,11 +400,12 @@ func (u *updater) inspect(ctx context.Context, s *step) error {
 }
 
 // checkState records a refusal for a submodule that has uncommitted
-// changes, a path that is not a submodule, or no repository to initialize
-// from without Fetch. It reads HEAD of a populated submodule.
+// changes, a path that is not a submodule, or, when it must be
+// initialized, no URL or no repository to initialize from without Fetch.
+// It reads HEAD of a populated submodule.
 func (u *updater) checkState(ctx context.Context, s *step) error {
 	r, loc, name := u.repo, s.loc, s.change.Submodule.Name
-	if s.refusal = loc.refusal(name); s.refusal != nil {
+	if s.refusal = loc.initRefusal(s.change.Submodule); s.refusal != nil {
 		return nil
 	}
 	if !loc.populated {
@@ -418,27 +421,26 @@ func (u *updater) checkState(ctx context.Context, s *step) error {
 	return err
 }
 
-// checkInit plans the initialization of a submodule that is not populated.
-// Without Fetch, the submodule repository must exist and hold the commit
-// that the index records, with all its objects, since the initialization
-// checks that commit out and may not fetch anything. Git cannot run in a
-// repository that names a working tree directory that was removed; outside
-// a dry run, that directory is created again first. A repository that git
-// still cannot run in is checked by the initialization itself.
+// checkInit plans the initialization of a submodule that is not populated
+// and has no other refusal. A missing submodule repository must be cloned,
+// which needs Fetch. Without Fetch, the submodule repository must hold the
+// commit that the index records, with all its objects, since the
+// initialization checks that commit out and may not fetch anything. Git
+// cannot run in a repository that names a working tree directory that was
+// removed; outside a dry run, that directory is created again first. A
+// repository that git still refuses to use is checked by the initialization
+// itself.
 func (u *updater) checkInit(ctx context.Context, s *step) error {
 	name := s.change.Submodule.Name
-	exists, err := isDir(s.loc.gitDir)
-	if err != nil {
-		return err
-	}
-	s.change.Init, s.change.Clone = true, !exists
+	s.change.Init = true
 	switch {
+	case s.loc.repo == git.RepoMissing:
+		s.change.Clone = true
+		s.refusal = refusalIf(!u.opts.Fetch, name, ErrUninitialized)
+		return nil
 	case u.opts.Fetch:
 		return nil
-	case !exists:
-		s.refusal = wrapName(name, ErrUninitialized)
-		return nil
-	case !s.loc.hasRepo() && !u.opts.DryRun:
+	case s.loc.repo == git.RepoUnusable && !u.opts.DryRun:
 		if err := u.recreateWorktree(ctx, s); err != nil {
 			return err
 		}

@@ -46,9 +46,14 @@ func TestFetch(t *testing.T) {
 			f.track("deinit", tag, gittest.TagV101, gittest.TagV101, v101)
 			f.add("plain", "", "")
 			f.track("fresh", tag, gittest.TagV101, gittest.TagV101, v101)
+			f.track("removed", tag, gittest.TagV101, gittest.TagV101, v101)
 			f.super.Deinit(t, "deinit")
 			f.super.Deinit(t, "fresh")
 			f.removeModule("fresh")
+			// The repository of removed names its missing working tree.
+			if err := os.RemoveAll(f.dir("removed")); err != nil {
+				t.Fatal(err)
+			}
 			f.up.MoveTag(t, gittest.TagV101, tip)
 			newer := f.up.Commit(t, "newer")
 			gittest.Git(t, f.up.Work, "push", "--quiet", "origin", "--delete",
@@ -58,14 +63,14 @@ func TestFetch(t *testing.T) {
 
 			var progress strings.Builder
 			results, err := f.repo().Fetch(t.Context(), nil, &progress)
-			want := []string{"moved", "deinit+init", "fresh+init+clone"}
+			want := []string{"moved", "deinit+init", "fresh+init+clone", "removed+init"}
 			if got := fetchNames(results); err != nil || !slices.Equal(got, want) {
 				t.Fatalf("Fetch = %q, %v; want %q", got, err, want)
 			}
 			if !strings.Contains(progress.String(), "Cloning into") {
 				t.Errorf("progress %q", progress.String())
 			}
-			for _, name := range []string{"moved", "deinit", "fresh"} {
+			for _, name := range []string{"moved", "deinit", "fresh", "removed"} {
 				dir := f.dir(name)
 				if got := gittest.Git(t, dir, "rev-parse", "v1.0.1^{commit}"); got != tip {
 					t.Errorf("%s: tag v1.0.1 at %s, want the moved tag %s", name, got, tip)

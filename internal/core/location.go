@@ -64,6 +64,25 @@ func (l location) refusal(name string) error {
 	return nil
 }
 
+// initRefusal returns the refusal of a command that would modify the
+// submodule sub at the location and initialize it when it is not
+// populated: the refusal of a modification, or, when an initialization is
+// needed, ErrNoURL when .gitmodules records no URL for it, and
+// ErrNotRepository when something other than a repository is in the place
+// of its repository, which git would neither use nor replace.
+func (l location) initRefusal(sub manifest.Submodule) error {
+	switch err := l.refusal(sub.Name); {
+	case err != nil || l.populated:
+		return err
+	case sub.URL == "":
+		return wrapName(sub.Name, ErrNoURL)
+	case l.repo == git.RepoInvalid:
+		return fmt.Errorf("%s: %w: %s (remove it)", displayName(sub.Name), ErrNotRepository,
+			displayName(l.gitDir))
+	}
+	return nil
+}
+
 // hasRepo reports whether git commands can run in the submodule repository.
 func (l location) hasRepo() bool {
 	return l.repo == git.RepoUsable
@@ -115,19 +134,6 @@ func (r *Repo) locate(ctx context.Context, sub manifest.Submodule) (location, er
 	return loc, err
 }
 
-// isDir reports whether dir is a directory, following symbolic links. A
-// missing directory is not an error.
-func isDir(dir string) (bool, error) {
-	fi, err := os.Stat(dir)
-	switch {
-	case errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR):
-		return false, nil
-	case err != nil:
-		return false, fmt.Errorf("submodule repository: %w", err)
-	}
-	return fi.IsDir(), nil
-}
-
 // hasSymlink reports whether a component of the "/"-separated path p below
 // root is a symbolic link. Missing components end the check.
 func hasSymlink(root, p string) (bool, error) {
@@ -154,6 +160,8 @@ func uninitializedReason(loc location) string {
 		return "submodule path contains a symbolic link"
 	case !loc.tracked():
 		return "the index records no submodule at the path"
+	case loc.repo == git.RepoInvalid:
+		return "submodule is not checked out, and its repository directory is not a repository"
 	}
 	return "submodule is not checked out"
 }

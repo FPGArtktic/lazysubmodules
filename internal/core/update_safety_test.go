@@ -489,22 +489,25 @@ func TestUpdateRemovedWorktree(t *testing.T) {
 	}
 	before := treeState(t, f.super.Dir)
 
-	// A dry run creates nothing, so the targets are unknown.
-	res, err := f.update(core.UpdateOptions{DryRun: true, Names: deep})
-	if err != nil || len(res.Changes) != 2 {
-		t.Fatalf("Update(dry run) = %+v, %v", res, err)
-	}
-	for _, c := range res.Changes {
-		wantSteps(t, c, true, false)
-		if c.New != (core.Resolution{}) || !c.Changed() {
-			t.Errorf("dry run: %+v", c)
+	// A dry run creates nothing, so the targets are unknown; the existing
+	// repositories need no clone.
+	for _, fetch := range []bool{false, true} {
+		res, err := f.update(core.UpdateOptions{DryRun: true, Fetch: fetch, Names: deep})
+		if err != nil || len(res.Changes) != 2 {
+			t.Fatalf("Update(dry run, fetch %t) = %+v, %v", fetch, res, err)
+		}
+		for _, c := range res.Changes {
+			wantSteps(t, c, true, false)
+			if c.New != (core.Resolution{}) || !c.Changed() {
+				t.Errorf("dry run, fetch %t: %+v", fetch, c)
+			}
 		}
 	}
 	wantSameTree(t, "dry run", before, treeState(t, f.super.Dir))
 
 	// The missing ref is found before any submodule is initialized, and the
 	// directories created to read the repositories are removed again.
-	_, err = f.update(core.UpdateOptions{})
+	_, err := f.update(core.UpdateOptions{})
 	want := "missing: refused: ref not found in local refs: " +
 		"tag v9 does not exist or does not point to a commit"
 	if !errors.Is(err, core.ErrMissingRef) || err.Error() != want {
@@ -513,7 +516,7 @@ func TestUpdateRemovedWorktree(t *testing.T) {
 	wantSameTree(t, "refused update", before, treeState(t, f.super.Dir))
 	wantState(t, f.status("one"), core.StateUninitialized, "not checked out")
 
-	res = f.mustUpdate(core.UpdateOptions{Names: deep})
+	res := f.mustUpdate(core.UpdateOptions{Names: deep})
 	for _, c := range res.Changes {
 		wantSteps(t, c, true, false)
 		dir := filepath.Join(f.super.Dir, "deep", c.Submodule.Name)
@@ -582,6 +585,73 @@ func TestUpdateSymlinkedFiles(t *testing.T) {
 			if got := readFile(t, outside); got != content {
 				t.Errorf("the linked file changed:\n%s", got)
 			}
+		})
+	}
+}
+
+func TestUpdateNotRepository(t *testing.T) {
+	t.Parallel()
+	for name, create := range map[string]func(t *testing.T, p string){
+		"empty directory": func(t *testing.T, p string) {
+			if err := os.Mkdir(p, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"file": func(t *testing.T, p string) {
+			gittest.WriteFile(t, p, "gitdir: ../../../elsewhere\n")
+		},
+		"broken link": func(t *testing.T, p string) {
+			if err := os.Symlink("elsewhere", p); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			f := newFixture(t, gittest.SHA1)
+			v100 := f.commits[gittest.TagV100]
+			f.track("lib", manifest.ModeTag, gittest.TagV100, gittest.TagV100, v100)
+			f.track("other", manifest.ModeTag, gittest.TagV100, gittest.TagV100, v100)
+			f.super.Deinit(t, "lib")
+			f.removeModule("lib")
+			module := filepath.Join(f.super.Dir, ".git", "modules", "lib")
+			create(t, module)
+			before := treeState(t, f.super.Dir)
+
+			// Git would neither use nor replace what is there, and it would
+			// fail only after registering the submodule.
+			want := "lib: refused: the submodule repository directory is not a repository: " +
+				module + " (remove it)"
+			r := f.repo()
+			for _, opts := range []core.UpdateOptions{
+				{}, {Fetch: true}, {DryRun: true}, {DryRun: true, Fetch: true},
+				{Fetch: true, Commit: true},
+			} {
+				res, err := r.Update(t.Context(), opts)
+				what := fmt.Sprintf("Update(%+v)", opts)
+				wantErr(t, what, err, core.ErrRefused, core.ErrNotRepository)
+				if err == nil || err.Error() != want || len(res.Changes) != 0 {
+					t.Errorf("%s = %+v, %v\nwant %s", what, res, err, want)
+				}
+			}
+			res, err := r.Fetch(t.Context(), nil, nil)
+			wantErr(t, "Fetch", err, core.ErrNotRepository, core.ErrRefused)
+			if err == nil || err.Error() != want || len(res) != 0 {
+				t.Errorf("Fetch = %+v, %v\nwant %s", res, err, want)
+			}
+			wantSameTree(t, "refused commands", before, treeState(t, f.super.Dir))
+			if status := gittest.Git(t, f.super.Dir, "status", "--porcelain"); status != "" {
+				t.Errorf("git status = %q", status)
+			}
+			wantState(t, f.status("lib"), core.StateUninitialized, "is not a repository")
+
+			// Once the directory is removed, the submodule can be cloned.
+			if err := os.Remove(module); err != nil {
+				t.Fatal(err)
+			}
+			res2 := f.mustUpdate(core.UpdateOptions{Fetch: true, Names: []string{"lib"}})
+			wantSteps(t, oneChange(t, res2), true, true)
+			wantState(t, f.status("lib"), core.StateOK, "up to date")
 		})
 	}
 }

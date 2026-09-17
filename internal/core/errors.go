@@ -49,6 +49,19 @@ var (
 	// a repository inside another submodule, which must not be modified.
 	ErrNotSubmodule = fmt.Errorf("%w: the index records no submodule at its path",
 		ErrRefused)
+	// ErrNoURL is returned when a submodule that is not checked out would be
+	// initialized, but .gitmodules records no URL that git accepts for it
+	// (git ignores a URL starting with "-"). Git cannot initialize such a
+	// submodule, and it would fail only after registering it in the
+	// configuration of the superproject.
+	ErrNoURL = fmt.Errorf("%w: .gitmodules records no usable url", ErrRefused)
+	// ErrNotRepository is returned when a submodule that is not checked out
+	// would be initialized, but something other than a git repository is in
+	// the place of its repository in the git directory of the superproject.
+	// Git neither uses nor replaces it, and it would fail only after
+	// registering the submodule.
+	ErrNotRepository = fmt.Errorf("%w: the submodule repository directory is not a repository",
+		ErrRefused)
 	// ErrPathExists is returned when a new submodule would be added at a
 	// path that already exists or belongs to another submodule.
 	ErrPathExists = fmt.Errorf("%w: path already exists", ErrRefused)

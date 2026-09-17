@@ -35,17 +35,18 @@ type FetchResult struct {
 // detect them, and deleted remote branches are pruned. The submodules are
 // processed one after the other, in .gitmodules order, and the first
 // failure ends the fetch. A submodule whose path leads through a symbolic
-// link, or whose path the index does not record as a submodule, is refused
-// before anything is fetched.
+// link, whose path the index does not record as a submodule, or that must be
+// initialized but has no usable url in .gitmodules or something other than
+// a repository in the place of its repository, is refused before anything
+// is fetched.
 //
 // Context: uses the network; credentials come from the git configuration.
 // Progress receives the output of git; when nil, the output is captured.
 // Return: one FetchResult per submodule fetched; an error wrapping
 // ErrNotFound or ErrUnmanaged for a name that cannot be fetched, an error
-// joining the ErrSymlinkPath and ErrNotSubmodule refusals, or an error from
-// reading
-// .gitmodules; on a *git.Error, the results of the submodules fetched
-// before it.
+// joining the ErrSymlinkPath, ErrNotSubmodule, ErrNoURL and ErrNotRepository
+// refusals, or an error from reading .gitmodules; on a *git.Error, the
+// results of the submodules fetched before it.
 func (r *Repo) Fetch(ctx context.Context, names []string, progress io.Writer) (
 	[]FetchResult, error,
 ) {
@@ -63,7 +64,7 @@ func (r *Repo) Fetch(ctx context.Context, names []string, progress io.Writer) (
 	}
 	refusals := make([]error, len(subs))
 	for i, loc := range locs {
-		refusals[i] = loc.refusal(subs[i].Name)
+		refusals[i] = loc.initRefusal(subs[i])
 	}
 	if err := errors.Join(refusals...); err != nil {
 		return nil, err
@@ -71,13 +72,7 @@ func (r *Repo) Fetch(ctx context.Context, names []string, progress io.Writer) (
 	results := make([]FetchResult, 0, len(subs))
 	for i, sub := range subs {
 		res := FetchResult{Submodule: sub, Init: !locs[i].populated}
-		if res.Init {
-			exists, err := isDir(locs[i].gitDir)
-			if err != nil {
-				return results, wrapName(sub.Name, err)
-			}
-			res.Cloned = !exists
-		}
+		res.Cloned = res.Init && locs[i].repo == git.RepoMissing
 		if err := r.sync(ctx, sub, locs[i].worktree, res.Init, true, progress); err != nil {
 			return results, wrapName(sub.Name, err)
 		}
