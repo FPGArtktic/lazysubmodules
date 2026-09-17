@@ -176,9 +176,67 @@ func TestReadHelpersPartialClone(t *testing.T) {
 		if _, ok := errors.AsType[*git.Error](err); !ok || entries != nil {
 			t.Errorf("%s: ConfigListRev(HEAD~1) = %q, %v; want *git.Error", filter, entries, err)
 		}
+		// HEAD~1 lacks its .gitmodules blob, and its tree in a treeless clone.
+		if got, err := r.MissingObjects(ctx, clone, "HEAD"); err != nil || len(got) != 0 {
+			t.Errorf("%s: MissingObjects(HEAD) = %q, %v; want none", filter, got, err)
+		}
+		if got, err := r.MissingObjects(ctx, clone, "HEAD~1"); err != nil || len(got) != 1 {
+			t.Errorf("%s: MissingObjects(HEAD~1) = %q, %v; want one object", filter, got, err)
+		}
 		if got := missingObjects(t, clone); !slices.Equal(got, missing) {
 			t.Errorf("%s: missing objects changed from %q to %q", filter, missing, got)
 		}
+	}
+}
+
+func TestMissingObjects(t *testing.T) {
+	t.Parallel()
+	for _, format := range formats() {
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+			f := newPartialFixture(t, format)
+			r := gittest.Runner(t)
+			ctx := t.Context()
+			missing := missingObjects(t, f.sub)
+			module := filepath.Join(f.super.Dir, ".git", "modules", "lib")
+			// The tip of main is checked out; v1.0.0 has blobs of its own.
+			tip := f.commits[gittest.TagV200RC]
+			for _, dir := range []string{f.sub, module} {
+				got, err := r.MissingObjects(ctx, dir, tip)
+				if err != nil || len(got) != 0 {
+					t.Errorf("MissingObjects(%s, tip) = %q, %v; want none", dir, got, err)
+				}
+				got, err = r.MissingObjects(ctx, dir, gittest.TagV100)
+				if err != nil || len(got) == 0 ||
+					slices.ContainsFunc(got, func(o string) bool { return !slices.Contains(missing, o) }) {
+					t.Errorf("MissingObjects(%s, v1.0.0) = %q, %v; want some of %q", dir, got, err,
+						missing)
+				}
+			}
+			if got := missingObjects(t, f.sub); !slices.Equal(got, missing) {
+				t.Errorf("objects were fetched: missing %q, want %q", got, missing)
+			}
+
+			// A complete repository lacks nothing.
+			for tag, commit := range f.commits {
+				got, err := r.MissingObjects(ctx, f.up.Bare, commit)
+				if err != nil || len(got) != 0 {
+					t.Errorf("MissingObjects(upstream, %s) = %q, %v; want none", tag, got, err)
+				}
+			}
+			other := gittest.NewUpstream(t, format).Commit(t, "elsewhere")
+			tree := gittest.Git(t, f.sub, "rev-parse", "HEAD^{tree}")
+			for _, commit := range []string{other, tree} {
+				if got, err := r.MissingObjects(ctx, f.sub, commit); !errors.Is(err, git.ErrRefNotFound) {
+					t.Errorf("MissingObjects(%s) = %q, %v; want ErrRefNotFound", commit, got, err)
+				}
+			}
+			if got, err := r.MissingObjects(ctx, f.sub, "--all"); !errors.Is(err, git.ErrInvalidRefName) {
+				t.Errorf("MissingObjects(--all) = %q, %v; want ErrInvalidRefName", got, err)
+			}
+			_, err := r.MissingObjects(ctx, t.TempDir(), tip)
+			wantGitError(t, "MissingObjects(outside)", err)
+		})
 	}
 }
 

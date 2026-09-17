@@ -137,6 +137,42 @@ func (r *Runner) ResolveCommit(ctx context.Context, dir, rev string) (string, er
 	return r.verifyRev(ctx, dir, rev, rev+"^{commit}")
 }
 
+// MissingObjects lists the objects of a commit that the repository at dir
+// lacks, such as the blobs that a partial clone has not fetched yet.
+//
+// The tree of the commit and every tree and blob below it are checked; the
+// history of the commit is not, and neither are the commits that the tree
+// records for submodules. Missing objects are not fetched, not even from
+// the promisor remote of a partial clone.
+//
+// Context: dir must be inside a repository.
+// Return: the names of the missing objects, none when the commit can be
+// checked out without fetching anything; an error wrapping ErrRefNotFound
+// when commit does not name a commit that the repository has; an error
+// wrapping ErrInvalidRefName when commit starts with "-"; or *Error.
+func (r *Runner) MissingObjects(ctx context.Context, dir, commit string) ([]string, error) {
+	if strings.HasPrefix(commit, "-") {
+		return nil, fmt.Errorf("objects: %w: %q", ErrInvalidRefName, commit)
+	}
+	// Depending on its version, rev-list lists a missing commit or fails.
+	full, err := r.ResolveCommit(ctx, dir, commit)
+	if err != nil {
+		return nil, err
+	}
+	out, err := r.runOffline(ctx, dir, "rev-list", "--objects", "--no-object-names",
+		"--no-walk", "--missing=print", "--end-of-options", full)
+	if err != nil {
+		return nil, err
+	}
+	var missing []string
+	for _, line := range splitLines(out) {
+		if object, ok := strings.CutPrefix(line, "?"); ok {
+			missing = append(missing, object)
+		}
+	}
+	return missing, nil
+}
+
 // Head returns the commit checked out in the repository at dir.
 //
 // Context: dir must be inside a repository; a detached HEAD is fine.
