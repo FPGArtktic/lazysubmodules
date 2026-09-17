@@ -126,9 +126,13 @@ func TestUpdateRefusesPathWithoutGitlink(t *testing.T) {
 	}
 	vr, err := r.Verify(t.Context(), []string{"evil"}, core.VerifyOptions{})
 	wantErr(t, "Verify(evil)", err, core.ErrVerify)
+	if len(vr) != 1 {
+		t.Fatalf("Verify(evil) = %+v, %v", vr, err)
+	}
 	wantChecks(t, vr[0], []string{core.CheckLockEntry, core.CheckInitialized},
 		[]string{core.CheckLockEntry, core.CheckInitialized}, "")
-	if detail := vr[0].Checks[1].Detail; !strings.Contains(detail, "records no submodule") {
+	if detail := checkDetail(t, vr[0], core.CheckInitialized); !strings.Contains(detail,
+		"records no submodule") {
 		t.Errorf("initialized detail %q", detail)
 	}
 	stdout, stderr, err := foreach(t, f, f.super.Dir, "sh", "-c", `echo "$name"`)

@@ -35,6 +35,17 @@ func (f *fixture) verifyOne(name string, opts core.VerifyOptions) (core.VerifyRe
 	return res[0], err
 }
 
+// checkDetail returns the detail of the named check of a verification
+// result, and fails the test when the result has no such check.
+func checkDetail(t *testing.T, res core.VerifyResult, name string) string {
+	t.Helper()
+	i := slices.IndexFunc(res.Checks, func(c core.Check) bool { return c.Name == name })
+	if i < 0 {
+		t.Fatalf("%s: no %s check in %+v", res.Submodule.Name, name, res.Checks)
+	}
+	return res.Checks[i].Detail
+}
+
 // checkNames lists the names of the checks of a result.
 func checkNames(res core.VerifyResult) []string {
 	names := make([]string, 0, len(res.Checks))
@@ -223,8 +234,9 @@ func TestVerifyLockConfig(t *testing.T) {
 			if c.name == "invalid ref" {
 				// The tag v1.0.1.lock does not exist.
 				wantChecks(t, res, names, []string{core.CheckLockConfig, core.CheckTag}, "")
-				if !strings.Contains(res.Checks[1].Detail, c.detail) {
-					t.Errorf("detail %q", res.Checks[1].Detail)
+				if detail := checkDetail(t, res, core.CheckLockConfig); !strings.Contains(detail,
+					c.detail) {
+					t.Errorf("detail %q", detail)
 				}
 				return
 			}
@@ -264,7 +276,8 @@ func TestVerifyUninitialized(t *testing.T) {
 	f.removeModule("pattern")
 	one, _ := f.verifyOne("pattern", core.VerifyOptions{})
 	wantChecks(t, one, uninitialized, []string{core.CheckLockConfig, core.CheckInitialized}, "")
-	if detail := one.Checks[1].Detail; !strings.Contains(detail, "cannot list tags") {
+	if detail := checkDetail(t, one, core.CheckLockConfig); !strings.Contains(detail,
+		"cannot list tags") {
 		t.Errorf("lock-config detail %q", detail)
 	}
 }
@@ -360,8 +373,8 @@ func TestVerifySignatures(t *testing.T) {
 	res, err = r.Verify(t.Context(), nil, core.VerifyOptions{Signatures: true})
 	wantErr(t, "Verify", err, core.ErrVerify)
 	want := "verification failed: untrusted-tag, unsigned-tag, lightweight-tag, unsigned-commit"
-	if err == nil || err.Error() != want {
-		t.Errorf("Verify = %v, want %s", err, want)
+	if err == nil || err.Error() != want || len(res) != 7 {
+		t.Fatalf("Verify = %+v, %v, want 7 results and %s", res, err, want)
 	}
 	withSignature := func(names []string) []string {
 		return append(slices.Clone(names), core.CheckSignature)
@@ -374,7 +387,8 @@ func TestVerifySignatures(t *testing.T) {
 	wantChecks(t, res[4], withSignature(branchChecks()), nil, "")
 	wantChecks(t, res[5], withSignature(branchChecks()), nil, "")
 	wantChecks(t, res[6], withSignature(branchChecks()), fail, "commit "+v100[:12]+": ")
-	if detail := res[2].Checks[7].Detail; !strings.Contains(detail, "no signature") {
+	if detail := checkDetail(t, res[2], core.CheckSignature); !strings.Contains(detail,
+		"no signature") {
 		t.Errorf("unsigned tag detail %q", detail)
 	}
 }
