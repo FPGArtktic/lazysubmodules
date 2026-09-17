@@ -16,9 +16,16 @@ import (
 const (
 	// procDir is the mount point of the Linux proc file system.
 	procDir = "/proc"
-	// freezeTimeout bounds how long SignalTree waits for the processes it
-	// stops to reach a state in which they cannot start processes.
-	freezeTimeout = time.Second
+	// freezeStall bounds how long SignalTree waits for the processes it
+	// stops to reach a state in which they cannot start processes. Every
+	// round of stopping and scanning gets it anew: a scan reads the state
+	// of every process of the machine, so a busy machine makes the rounds
+	// slower, without making the tree deeper.
+	freezeStall = time.Second
+	// freezeTimeout bounds the freezing as a whole, so that a tree whose
+	// processes keep starting processes cannot delay the signal without
+	// end. It stays below the delay that Exec allows a canceled command.
+	freezeTimeout = 4 * time.Second
 	// uninterruptibleWait bounds how long SignalTree waits for a process in
 	// an uninterruptible wait, which stops only once the wait ends.
 	uninterruptibleWait = 200 * time.Millisecond
@@ -50,9 +57,10 @@ const (
 // moment and stopped again until it does not: a process started then would
 // not inherit the pending signal. Then the descendants, children first, and
 // p get sig, and all of them get SIGCONT in the same order, so that they
-// can handle sig, for example by removing lock files. The freezing ends
-// after one second in any case. The process group is left alone, so an
-// interactive command stays in the foreground group of its terminal.
+// can handle sig, for example by removing lock files. A round of stopping
+// and scanning lasts a second at most, and the freezing four seconds in any
+// case. The process group is left alone, so an interactive command stays in
+// the foreground group of its terminal.
 //
 // Context: Linux; p is a child of the caller, such as the process of an
 // exec.Cmd in its Cancel function; sig ends processes, such as SIGTERM or
@@ -71,7 +79,7 @@ func signalTree(p *os.Process, sig syscall.Signal, timeout time.Duration) error 
 		return err
 	}
 	t := &procTree{root: p, sig: sig}
-	t.freeze(time.Now().Add(timeout))
+	t.freeze(min(freezeStall, timeout), time.Now().Add(timeout))
 	slices.Reverse(t.pids)
 	for _, pid := range t.pids {
 		_ = syscall.Kill(pid, sig)
@@ -95,14 +103,20 @@ type procTree struct {
 }
 
 // freeze stops the descendants of the root, which has been sent SIGSTOP,
-// and records them, until the deadline. A process ID in /proc names a
-// descendant of the root only while the root has not been waited for; once
-// it has, the scans end. A process that cannot be stopped, for example one
-// running as another user, is not waited for.
-func (t *procTree) freeze(deadline time.Time) {
+// and records them, until a round of stopping and scanning finds no process
+// that it has not seen, a round runs out of stall, or the limit passes. A
+// process ID in /proc names a descendant of the root only while the root
+// has not been waited for; once it has, the scans end. A process that
+// cannot be stopped, for example one running as another user, is not waited
+// for.
+func (t *procTree) freeze(stall time.Duration, limit time.Time) {
 	seen := map[int]bool{t.root.Pid: true}
 	stopping := []int{t.root.Pid}
 	for {
+		deadline := time.Now().Add(stall)
+		if deadline.After(limit) {
+			deadline = limit
+		}
 		t.settle(stopping, deadline)
 		var found []int
 		for _, pid := range descendants(t.root.Pid) {
@@ -121,7 +135,7 @@ func (t *procTree) freeze(deadline time.Time) {
 			}
 		}
 		t.pids = append(t.pids, found...)
-		if !time.Now().Before(deadline) {
+		if !time.Now().Before(limit) {
 			return
 		}
 	}
