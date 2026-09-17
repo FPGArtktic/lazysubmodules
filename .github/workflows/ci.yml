@@ -7,7 +7,8 @@
 # The build image is cached as an image archive, keyed by the image reference
 # that the script derives from the Containerfile hash. A changed Containerfile
 # therefore builds and caches a new image. Pull requests cannot write to the
-# cache of main.
+# cache of main. When two runs miss the cache at once, both build the image
+# and the later cache save is skipped.
 name: ci
 
 on:
@@ -19,9 +20,13 @@ on:
 permissions:
   contents: read
 
+# A pull request has one group: a new push cancels the superseded run, and the
+# new run lints all commits of the pull request again. Each push to main has a
+# group of its own (the commit), so no push run is ever cancelled, and none is
+# replaced while it waits, which a shared group would do. gitlint lints only
+# the commits of its own push, so a replaced run would leave commits unchecked.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  # Superseded pull request runs are cancelled; every push to main is built.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
