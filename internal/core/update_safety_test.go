@@ -572,6 +572,9 @@ func TestUpdateSymlinkedFiles(t *testing.T) {
 				_, err = r.Set(t.Context(), "lib", manifest.ModeBranch, "main")
 				wantErr(t, "Set", err, git.ErrNotRegularFile)
 			}
+			// Add refuses before it clones anything.
+			_, err = f.addSub("new", manifest.ModeTag, gittest.TagV100, false)
+			wantErr(t, "Add", err, git.ErrNotRegularFile)
 			wantSameTree(t, "commands on a linked "+file, before, treeState(t, f.super.Dir))
 			if got := readFile(t, outside); got != content {
 				t.Errorf("the linked file changed:\n%s", got)
