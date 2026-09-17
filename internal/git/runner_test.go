@@ -229,6 +229,46 @@ func TestExecEnv(t *testing.T) {
 	}
 }
 
+// sessionOf returns the session ID in the /proc stat line of a process.
+func sessionOf(t *testing.T, stat string) string {
+	t.Helper()
+	_, after, ok := strings.Cut(stat[strings.LastIndex(stat, ")"):], ") ")
+	fields := strings.Fields(after)
+	if !ok || len(fields) < 4 {
+		t.Fatalf("stat line %q", stat)
+	}
+	// State, parent, process group, session.
+	return fields[3]
+}
+
+func TestWithoutTerminal(t *testing.T) {
+	t.Parallel()
+	self, err := os.ReadFile("/proc/self/stat")
+	if err != nil {
+		t.Skipf("no /proc: %v", err)
+	}
+	session := sessionOf(t, string(self))
+	env := gittest.Env(t, "alias.stat=!cat /proc/self/stat")
+	for _, detach := range []bool{false, true} {
+		opts := []git.Option{git.WithEnv(env...)}
+		if detach {
+			opts = append(opts, git.WithoutTerminal())
+		}
+		r, err := git.New(opts...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := r.Run(t.Context(), "", "stat")
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A process of a new session has no controlling terminal.
+		if got := sessionOf(t, out); (got != session) != detach {
+			t.Errorf("WithoutTerminal %t: session %s, the test runs in %s", detach, got, session)
+		}
+	}
+}
+
 // waitForFile waits until path exists.
 func waitForFile(t *testing.T, path string) {
 	t.Helper()

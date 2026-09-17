@@ -51,6 +51,8 @@ const waitDelay = 10 * time.Second
 type Runner struct {
 	bin string
 	env []string
+	// detach runs every invocation without a controlling terminal.
+	detach bool
 }
 
 // Option configures a Runner in New.
@@ -68,6 +70,23 @@ func WithEnv(kv ...string) Option {
 	extra := slices.Clone(kv)
 	return func(r *Runner) {
 		r.env = append(r.env, extra...)
+	}
+}
+
+// WithoutTerminal runs every invocation in a new session, which has no
+// controlling terminal.
+//
+// The programs that git starts, such as ssh asking to confirm a host key or
+// for a passphrase, or an interactive hook, then cannot open the terminal:
+// they fail at once, or use a graphical askpass program when one is
+// configured. Without the option, they would read from and write to the
+// terminal while a full-screen program owns it.
+//
+// Context: only as an argument of New.
+// Return: the option.
+func WithoutTerminal() Option {
+	return func(r *Runner) {
+		r.detach = true
 	}
 }
 
@@ -184,6 +203,9 @@ func (r *Runner) Exec(ctx context.Context, c Cmd) (string, error) {
 	cmd.Stderr = c.Stderr
 	if cmd.Stderr == nil {
 		cmd.Stderr = &stderr
+	}
+	if r.detach {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	}
 	cmd.Cancel = func() error {
 		return SignalTree(cmd.Process, syscall.SIGTERM)
