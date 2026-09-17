@@ -322,6 +322,28 @@ func (r *Runner) StagedPaths(ctx context.Context, dir string) ([]string, error) 
 	return splitNUL(out), nil
 }
 
+// UnmergedPaths lists the paths for which the index holds the conflict
+// stages of an unfinished merge.
+//
+// Context: dir must be the top level of a working tree.
+// Return: the paths relative to dir, each once, in index order; or *Error.
+func (r *Runner) UnmergedPaths(ctx context.Context, dir string) ([]string, error) {
+	out, err := r.runOffline(ctx, dir, "ls-files", "--unmerged", "-z")
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, rec := range splitNUL(out) {
+		// "<mode> <object> <stage>\t<path>"; the stages of a path are
+		// adjacent.
+		_, name, _ := strings.Cut(rec, "\t")
+		if len(paths) == 0 || paths[len(paths)-1] != name {
+			paths = append(paths, name)
+		}
+	}
+	return paths, nil
+}
+
 // HasStaged reports whether the index differs from HEAD.
 //
 // Context: dir must be a working tree.

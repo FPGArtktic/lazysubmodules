@@ -655,6 +655,45 @@ func TestStagedPathsOutsideRepository(t *testing.T) {
 	}
 }
 
+func TestUnmergedPaths(t *testing.T) {
+	t.Parallel()
+	r := gittest.Runner(t)
+	dir := gittest.InitRepo(t, gittest.SHA1)
+	write := func(content string) {
+		t.Helper()
+		for _, name := range []string{"a b", "c", "d"} {
+			gittest.WriteFile(t, filepath.Join(dir, name), name+content)
+		}
+	}
+	write("\n")
+	gittest.Git(t, dir, "add", "--all")
+	gittest.Git(t, dir, "commit", "--quiet", "--message=base")
+	gittest.Git(t, dir, "checkout", "--quiet", "-b", "side")
+	write("\nside\n")
+	gittest.Git(t, dir, "commit", "--quiet", "--all", "--message=side")
+	gittest.Git(t, dir, "checkout", "--quiet", "main")
+	if paths, err := r.UnmergedPaths(t.Context(), dir); err != nil || paths != nil {
+		t.Errorf("UnmergedPaths(clean) = %q, %v; want none", paths, err)
+	}
+	write("\nmain\n")
+	gittest.WriteFile(t, filepath.Join(dir, "d"), "d\n")
+	gittest.Git(t, dir, "commit", "--quiet", "--all", "--message=main")
+	if _, err := r.Run(t.Context(), dir, "merge", "--quiet", "side"); err == nil {
+		t.Fatal("the merge did not conflict")
+	}
+	paths, err := r.UnmergedPaths(t.Context(), dir)
+	if err != nil || !slices.Equal(paths, []string{"a b", "c"}) {
+		t.Errorf("UnmergedPaths(conflict) = %q, %v; want [a b c]", paths, err)
+	}
+	gittest.Git(t, dir, "add", "c")
+	paths, err = r.UnmergedPaths(t.Context(), dir)
+	if err != nil || !slices.Equal(paths, []string{"a b"}) {
+		t.Errorf("UnmergedPaths(resolved c) = %q, %v; want [a b]", paths, err)
+	}
+	_, err = r.UnmergedPaths(t.Context(), t.TempDir())
+	wantGitError(t, "UnmergedPaths(outside)", err)
+}
+
 func TestCommit(t *testing.T) {
 	t.Parallel()
 	for _, format := range formats() {
