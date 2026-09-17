@@ -10,6 +10,10 @@ project.md
 /bin/
 /dist/
 
+# scripts/third-party-licenses.sh writes the license notices for archives
+# and packages to build/third-party/.
+/build/
+
 # Binaries of a plain "go build" on the host.
 /lazysubmodules
 /cmd/lazysubmodules/lazysubmodules
