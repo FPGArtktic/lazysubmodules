@@ -6,9 +6,10 @@
 #
 # Writes $READTHEDOCS_OUTPUT/html/index.html from README.md and copies the
 # docs/ tree, which holds the images the README embeds, next to it. Links to
-# other repository files point to GitHub; anchors, absolute URLs and docs/
-# links stay as they are. Heading anchors follow GitHub's rules, so that the
-# README's own links keep working.
+# repository files point to GitHub, because only the images are published
+# here; anchors, absolute URLs and the copied images stay as they are.
+# Heading anchors follow GitHub's rules, so that the README's own links keep
+# working.
 #
 # Read the Docs does not run build commands through a regular shell (pipes and
 # backslash escapes do not survive), so everything the build needs happens
@@ -28,6 +29,11 @@ import sys
 import tempfile
 
 REPO = "https://github.com/FPGArtktic/lazysubmodules/blob/main/"
+
+# The images the build copies. Every other docs/ target is a repository file
+# that this page does not publish: docs/ has no index and the Markdown files
+# are not rendered, so those links belong on GitHub.
+PUBLISHED = re.compile(r"docs/.*\.(?:gif|png|svg)$")
 
 MARKDOWN_PIN = (
     "markdown==3.10.3 "
@@ -91,7 +97,7 @@ def github_slug(value, separator):
 def repo_link(match):
     """Point a link or image to GitHub unless it works on the page as is."""
     attr, target = match.group(1), match.group(2)
-    if re.match(r"([a-z]+:|#|docs/)", target):
+    if re.match(r"[a-z]+:|#", target) or PUBLISHED.match(target):
         return match.group(0)
     return f'{attr}="{REPO}{target}"'
 
