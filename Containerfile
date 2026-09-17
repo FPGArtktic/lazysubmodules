@@ -208,7 +208,8 @@ LABEL org.opencontainers.image.title="lazysubmodules-build" \
 # the race detector needs.
 RUN set -euo pipefail; \
     pacman -S --noconfirm --needed \
-      cosign git gnupg go golangci-lint openssh python shellcheck syft; \
+      catatonit cosign git gnupg go golangci-lint openssh python shellcheck \
+      syft; \
     rm -rf /var/cache/pacman/pkg/*
 
 # The AUR packages; their dependencies come from the snapshot.
@@ -285,8 +286,8 @@ RUN set -eu; \
 # Print package and tool versions as an unprivileged user: proves every tool
 # is usable by the non-root user the container runs as.
 RUN set -euo pipefail; \
-    pacman -Q cosign gcc git gitlint gnupg go golangci-lint goreleaser-bin \
-      openssh pacman python shellcheck syft; \
+    pacman -Q catatonit cosign gcc git gitlint gnupg go golangci-lint \
+      goreleaser-bin openssh pacman python shellcheck syft; \
     setpriv --reuid=65534 --regid=65534 --clear-groups env HOME=/tmp sh -euc ' \
       set -o pipefail; \
       go version; \
@@ -302,3 +303,11 @@ RUN set -euo pipefail; \
       python --version; \
       ssh -V 2>&1; \
     '
+
+# catatonit runs as PID 1 and reaps orphaned processes. The command itself
+# would be PID 1 otherwise, and neither go nor the other tools wait for
+# processes they did not start: git leaves detached background processes
+# (e.g. automatic maintenance), whose zombies would pile up until the
+# container's process limit is reached. This does not depend on the host
+# engine providing an init (podman --init needs catatonit on the host).
+ENTRYPOINT ["/usr/bin/catatonit", "--"]
