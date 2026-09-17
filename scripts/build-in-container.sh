@@ -22,7 +22,7 @@ readonly REPO_ROOT
 readonly MODULE_PATH="github.com/FPGArtktic/lazysubmodules"
 readonly IMAGE_NAME="localhost/lazysubmodules-build"
 readonly TARGETS=(
-	build test lint gitlint licenses snapshot release
+	build test coverage lint gitlint licenses snapshot release
 	test-compat package-test
 	image image-tag image-save image-load
 )
@@ -61,6 +61,143 @@ readonly VOLUMES=(
 # permissive and compatible with GPL-3.0-only. Weak copyleft (MPL-2.0) is left
 # out on purpose: a dependency under it needs a manual review first.
 readonly ALLOWED_LICENSES="Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT"
+
+# Output directory of "coverage", relative to the repository root. Git
+# ignores it.
+readonly COVERAGE_DIR="coverage"
+
+# Report of "coverage", an awk program run in the build image. Its operands
+# are the coverage profile, the output of go test and the output of
+# "go tool cover -func", in this order; the variable "dir" names the output
+# directory and "module" the module path. It writes summary.md, the coverage
+# per package and in total as a Markdown table, and badge.json, the total in
+# the shields.io endpoint format, with a color for the rounded value that the
+# badge shows.
+#
+# A package's coverage is the share of its statements that its own tests run,
+# as go test prints it, and the total is the share of all statements, as
+# "go tool cover -func" prints it. The program fails when its numbers differ
+# from theirs, so the report never disagrees with the Go tools.
+# shellcheck disable=SC2016
+readonly COVERAGE_REPORT='
+BEGIN {
+	all = 0
+	allcovered = 0
+}
+function fail(message) {
+	printf "coverage: %s\n", message > "/dev/stderr"
+	failed = 1
+	exit 1
+}
+function percent(part, whole) {
+	return sprintf("%.1f", 100 * part / whole)
+}
+function color(value) {
+	value += 0
+	if (value >= 90) return "brightgreen"
+	if (value >= 80) return "green"
+	if (value >= 70) return "yellowgreen"
+	if (value >= 60) return "yellow"
+	if (value >= 50) return "orange"
+	return "red"
+}
+function name(pkg) {
+	return index(pkg, module "/") == 1 ? substr(pkg, length(module) + 2) : pkg
+}
+# "mode: atomic", then one line per block: PACKAGE/FILE:START,END STATEMENTS
+# COUNT. A block listed twice counts once.
+FILENAME == ARGV[1] {
+	if (FNR == 1) {
+		if ($0 !~ /^mode: /) fail(FILENAME ": no mode line")
+		next
+	}
+	if (NF != 3 || $1 !~ /\/.*:/) fail(FILENAME ":" FNR ": malformed line")
+	block = $1 " " $2
+	pkg = $1
+	sub(/\/[^\/]*$/, "", pkg)
+	owner[block] = pkg
+	statements[block] = $2
+	if ($3 > 0) hit[block] = 1
+	next
+}
+# STATUS<TAB>PACKAGE<TAB>TIME<TAB>coverage: P% of statements
+FILENAME == ARGV[2] {
+	n = split($0, field, "\t")
+	if (n < 4 || field[n] !~ /^coverage: /) next
+	if (field[n] == "coverage: [no statements]") next
+	if (field[n] !~ /^coverage: [0-9]+\.[0-9]% of statements$/)
+		fail(FILENAME ":" FNR ": unexpected coverage line")
+	value = field[n]
+	gsub(/^coverage: |% of statements$/, "", value)
+	reported[field[2]] = value
+	next
+}
+# The last line: total:<TAB>(statements)<TAB>P%
+FILENAME == ARGV[3] {
+	if ($1 == "total:") {
+		functotal = $NF
+		sub(/%$/, "", functotal)
+	}
+	next
+}
+END {
+	if (failed) exit 1
+	for (block in statements) {
+		pkg = owner[block]
+		if (!(pkg in total)) {
+			names[++count] = pkg
+			covered[pkg] = 0
+		}
+		total[pkg] += statements[block]
+		all += statements[block]
+		if (block in hit) {
+			covered[pkg] += statements[block]
+			allcovered += statements[block]
+		}
+	}
+	if (all == 0) fail("the profile has no statements")
+	for (i = 2; i <= count; i++) {
+		pkg = names[i]
+		for (j = i - 1; j > 0 && names[j] > pkg; j--) names[j + 1] = names[j]
+		names[j + 1] = pkg
+	}
+	for (pkg in reported) {
+		if (!(pkg in total)) fail("the profile has no statements of " pkg)
+	}
+	for (i = 1; i <= count; i++) {
+		pkg = names[i]
+		value = percent(covered[pkg], total[pkg])
+		if (!(pkg in reported)) fail("go test reports no coverage of " pkg)
+		if (reported[pkg] != value)
+			fail(pkg ": go test reports " reported[pkg] "%, the profile " value "%")
+	}
+	value = percent(allcovered, all)
+	if (functotal != value)
+		fail("go tool cover reports " functotal "% in total, the profile " value "%")
+
+	summary = dir "/summary.md"
+	print "### Test coverage\n" > summary
+	print "**" value "%** of the statements are covered (" allcovered " of " all \
+		"), measured with `go test -race -covermode=atomic ./...`. Each package" \
+		" counts the statements that its own tests run, as `go test -cover`" \
+		" reports them.\n" > summary
+	print "| Package | Statements | Covered | Coverage |" > summary
+	print "| :--- | ---: | ---: | ---: |" > summary
+	for (i = 1; i <= count; i++) {
+		pkg = names[i]
+		print "| `" name(pkg) "` | " total[pkg] " | " covered[pkg] " | " \
+			percent(covered[pkg], total[pkg]) "% |" > summary
+	}
+	print "| **Total** | **" all "** | **" allcovered "** | **" value "%** |" > summary
+	close(summary)
+
+	badge = dir "/badge.json"
+	printf "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"%s%%\",\"color\":\"%s\"}\n",
+		value, color(value) > badge
+	close(badge)
+	print "coverage: " value "% of the statements (" allcovered " of " all ")"
+}
+'
 
 # Environment variables handed to "release". GoReleaser reads GITHUB_TOKEN,
 # cosign keyless signing reads ACTIONS_ID_TOKEN_REQUEST_*, the AUR publisher
@@ -160,6 +297,8 @@ usage()
 		Targets in the build image:
 		  build         go build for the host architecture (binaries in bin/)
 		  test          go test -race ./...
+		  coverage      go test -race ./... with statement coverage; report in
+		                ${COVERAGE_DIR}/ (coverage.html, summary.md, badge.json)
 		  lint          golangci-lint, shellcheck on the shell scripts
 		                (scripts/*.sh, docs/demo/*.sh) and the AUR recipes
 		                (packaging/aur/*/PKGBUILD), scripts/check-headers.sh
@@ -651,6 +790,29 @@ target_test()
 {
 	# The race detector requires cgo.
 	run_in_image none 1 -- go test -race ./...
+}
+
+target_coverage()
+{
+	local dir="$COVERAGE_DIR"
+
+	# A failed run must not leave the report of an earlier one behind.
+	rm -rf -- "$dir"
+	mkdir -- "$dir"
+	# The tests of "test", with coverage. The race detector requires cgo and
+	# atomic counters. Without -coverpkg, each package counts only what its
+	# own tests run, as "go test -cover" reports it (see CONTRIBUTING.md).
+	run_in_image none 1 -- go test -race -covermode=atomic \
+		-coverprofile="${SRC_DIR}/${dir}/coverage.out" ./... |
+		tee "${dir}/test.log" || return 1
+	run_in_image none 1 -- go tool cover \
+		-html="${dir}/coverage.out" -o "${dir}/coverage.html" || return 1
+	run_in_image none 1 -- go tool cover \
+		-func="${dir}/coverage.out" >"${dir}/func.txt" || return 1
+	run_in_image none 1 -- awk -v dir="$dir" -v module="$MODULE_PATH" \
+		"$COVERAGE_REPORT" "${dir}/coverage.out" "${dir}/test.log" \
+		"${dir}/func.txt" || return 1
+	log "coverage report: ${dir}/coverage.html, ${dir}/summary.md, ${dir}/badge.json"
 }
 
 target_lint()

@@ -22,6 +22,7 @@ license, `GPL-3.0-only` (see [LICENSE](LICENSE)), and you certify the
 - [File headers](#file-headers)
 - [Commit messages](#commit-messages)
 - [Testing rules](#testing-rules)
+- [Test coverage](#test-coverage)
 - [Demo and recordings](#demo-and-recordings)
 - [Dependencies](#dependencies)
 - [Third-party notices](#third-party-notices)
@@ -69,6 +70,7 @@ Targets run in the given order and the script stops at the first failure:
 |---|---|
 | `build` | `go build` for the host architecture; binaries land in `bin/` |
 | `test` | `go test -race ./...` |
+| `coverage` | `go test -race ./...` with statement coverage; report in `coverage/` (see [Test coverage](#test-coverage)) |
 | `lint` | `golangci-lint run`, `shellcheck` on `scripts/*.sh`, `docs/demo/*.sh` and `packaging/aur/*/PKGBUILD`, and `scripts/check-headers.sh` |
 | `gitlint` | Validate the commit messages selected by `GITLINT_RANGE` |
 | `licenses` | `go-licenses check ./...` (see [Dependencies](#dependencies)) |
@@ -140,7 +142,8 @@ How the script behaves:
 - **Network for `package-test`:** `apt` and `dnf` download the `git`
   dependency of the packages from the distribution mirrors.
 - **cgo:** builds use `CGO_ENABLED=0`. The race detector needs cgo, so
-  `test` and `test-compat` enable it; `gcc` comes with the images.
+  `test`, `coverage` and `test-compat` enable it; `gcc` comes with the
+  images.
 - **Mounts:** the repository is mounted with `:Z` for SELinux hosts. The
   cache volumes are shared by every run and use the shared label `:z`
   instead, because a private label would be applied again, recursively, on
@@ -183,8 +186,8 @@ How the script behaves:
 
 Deliberate choices, for the reasons given above:
 
-- `test` and `test-compat` run with `CGO_ENABLED=1`, which `-race`
-  requires; everything else builds with `CGO_ENABLED=0`.
+- `test`, `coverage` and `test-compat` run with `CGO_ENABLED=1`, which
+  `-race` requires; everything else builds with `CGO_ENABLED=0`.
 - The cache volumes use `:z`; only the repository mount uses `:Z`.
 - `snapshot` adds `--skip=sign`: keyless signing needs the identity token
   that only a CI release run has.
@@ -600,6 +603,64 @@ go test ./internal/tui -run TestGolden -update
 - **TUI:** `internal/tui/testdata/` holds the screens, with the escape
   sequences of the pinned color profile.
 
+## Test coverage
+
+`scripts/build-in-container.sh coverage` runs the tests of `test` once
+more, with statement coverage, offline in the build image:
+
+```sh
+go test -race -covermode=atomic -coverprofile=coverage/coverage.out ./...
+```
+
+It writes its report to `coverage/`, which git ignores, and replaces an
+earlier report first:
+
+| File | Content |
+|---|---|
+| `coverage.out` | The coverage profile |
+| `coverage.html` | The source files with their covered and uncovered statements (`go tool cover -html`) |
+| `func.txt` | The coverage of every function (`go tool cover -func`) |
+| `test.log` | The output of `go test` |
+| `summary.md` | The coverage of every package and in total, as a Markdown table |
+| `badge.json` | The total for the README badge, in the [shields.io endpoint](https://shields.io/badges/endpoint-badge) format |
+
+- **What is measured:** each package counts only the statements that its
+  own tests run, and a package without tests counts with 0%, as
+  `go test -cover ./...` prints it in the same run. The total is the share
+  of all statements of all packages, as `go tool cover -func` prints it.
+  The target compares its table and total with the output of both tools
+  and fails when they differ. Test helper packages such as
+  `internal/git/gittest` are packages like the others and count as well.
+- **Not to the last statement:** the numbers of unchanged code differ
+  between runs by a tenth or two of a point, so the badge can change
+  without a commit. Some error paths run only when a test cancels work
+  that runs in parallel, and where that cancellation lands differs from
+  run to run; `TestStatusGitFailure` of `internal/core`, for example,
+  covers two error returns of `status.go` in about half of the runs. The
+  comparison with the Go tools still holds, because it compares the
+  report with the output of the same run. Read the numbers as "about
+  95%", not as a value to defend.
+- **No `-coverpkg`:** with `-coverpkg=./...`, the statements that the
+  tests of other packages run would count too, for example the
+  `internal/core` code that runs under the command line tests. The total
+  would hardly change, because the packages' own tests already cover them
+  well, but the per-package numbers would lose their meaning: `go test`
+  then reports for each package the share of the statements of the whole
+  module that its tests run. Every test binary would also be instrumented
+  for every package, which costs a little more time.
+- **Mode:** the race detector needs the `atomic` counter mode. The
+  percentages do not depend on the mode.
+- **Badge colors**, for the rounded value that the badge shows:
+  90% and more `brightgreen`, 80% `green`, 70% `yellowgreen`, 60%
+  `yellow`, 50% `orange`, below 50% `red`.
+- **Cost:** `coverage` takes about as long as `test`. Most of the time
+  goes to the race detector and to the `git` processes that the tests
+  start; the coverage counters add little. With empty caches on four
+  cores, both used about 940 CPU seconds (September 2026). A repeated run
+  with unchanged code takes well under a minute, because `go test` caches
+  most results of coverage runs in the `lazysubmodules-go-build` volume,
+  as it does for `test`.
+
 ## Demo and recordings
 
 ### The demo
@@ -888,7 +949,9 @@ AUR; only then does the README link to it:
 - CI (`.github/workflows/ci.yml`) runs `gitlint`, `lint`, `licenses`,
   `test`, `build`, `snapshot` and `package-test` through the same script for
   every pull request and every push to `main`, and uploads the snapshot.
-  A second job runs `test-compat`.
+  A second job runs `test-compat`, and a third runs `coverage` and, on
+  `main`, publishes the coverage badge (see
+  [Coverage in CI](#coverage-in-ci)).
 - CI caches the build image with `image-save` and `image-load`, keyed by the
   reference `image-tag` prints; a cache miss builds the image with `image`.
 - Third-party GitHub Actions are pinned by commit SHA.

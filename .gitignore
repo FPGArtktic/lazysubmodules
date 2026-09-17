@@ -10,6 +10,9 @@ project.md
 /bin/
 /dist/
 
+# scripts/build-in-container.sh: coverage writes its report to coverage/.
+/coverage/
+
 # scripts/third-party-licenses.sh, a GoReleaser before hook, writes the
 # license notices for archives and packages to build/third-party/.
 /build/
