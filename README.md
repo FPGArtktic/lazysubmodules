@@ -5,7 +5,7 @@
 
 [![CI](https://github.com/FPGArtktic/lazysubmodules/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/FPGArtktic/lazysubmodules/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/FPGArtktic/lazysubmodules/badges/coverage.json)](https://github.com/FPGArtktic/lazysubmodules/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/FPGArtktic/lazysubmodules?include_prereleases&sort=semver)](https://github.com/FPGArtktic/lazysubmodules/releases)
+[![Release](https://img.shields.io/github/v/release/FPGArtktic/lazysubmodules?include_prereleases)](https://github.com/FPGArtktic/lazysubmodules/releases)
 [![Go version](https://img.shields.io/github/go-mod/go-version/FPGArtktic/lazysubmodules)](go.mod)
 [![Go Reference](https://pkg.go.dev/badge/github.com/FPGArtktic/lazysubmodules.svg)](https://pkg.go.dev/github.com/FPGArtktic/lazysubmodules)
 [![Linted by golangci-lint](https://img.shields.io/badge/linted%20by-golangci--lint-00ADD8?logo=go&logoColor=white)](.golangci.yml)
@@ -280,6 +280,21 @@ The binary is statically linked and contains the Go standard library and
 a few Go modules under the MIT and BSD-3-Clause licenses. Their copyright
 notices and license texts come with every release archive and package, as
 described below.
+
+Every file below is on the
+[releases page](https://github.com/FPGArtktic/lazysubmodules/releases),
+for `amd64` and `arm64`:
+
+| System | What to take | How |
+|---|---|---|
+| Debian, Ubuntu, Mint | `..._linux_<arch>.deb` | [packages](#debian-and-rpm-packages) |
+| Fedora, RHEL, openSUSE | `..._linux_<arch>.rpm` | [packages](#debian-and-rpm-packages) |
+| Arch Linux, Manjaro | nothing, it builds from source | [AUR](#arch-linux-aur) |
+| Anything else with glibc | `..._linux_<arch>.tar.gz` | [archives](#release-archives) |
+| A Go toolchain, no root | nothing, `go install` builds it | [Go](#go) |
+
+`uname -m` names your architecture: `x86_64` is `amd64`, `aarch64` is
+`arm64`.
 
 ### Release archives
 
