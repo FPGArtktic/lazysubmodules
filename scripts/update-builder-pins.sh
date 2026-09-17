@@ -5,11 +5,12 @@
 # update-builder-pins.sh - move the build image pins to the newest versions
 #
 # Resolves the newest dated archlinux:base-devel tag and its digest on Docker
-# Hub, the Arch Linux Archive snapshot of the same day, and the newest commits
-# of the AUR packages on the official GitHub mirror of the AUR. The versions
-# of the AUR packages are read from the fetched recipes, and the GoReleaser
-# checksum of the recipe must match the checksums.txt of the upstream
-# release. The ARG pins in the Containerfile are then rewritten in place.
+# Hub, the Arch Linux Archive snapshot of the same day, the newest commits of
+# the AUR packages on the official GitHub mirror of the AUR, and the newest
+# go-licenses release on the Go module proxy. The versions of the AUR packages
+# are read from the fetched recipes, and the GoReleaser checksum of the recipe
+# must match the checksums.txt of the upstream release. The ARG pins in the
+# Containerfile are then rewritten in place.
 #
 # Usage: scripts/update-builder-pins.sh [-h] [-n]
 #
@@ -33,6 +34,8 @@ readonly ARCHIVE_URL="https://archive.archlinux.org/repos"
 readonly AUR_MIRROR="https://github.com/archlinux/aur.git"
 readonly GORELEASER_RELEASES="https://github.com/goreleaser/goreleaser/releases/download"
 readonly GORELEASER_ASSET="goreleaser_Linux_x86_64.tar.gz"
+readonly GO_PROXY="https://proxy.golang.org"
+readonly GO_LICENSES_MODULE="github.com/google/go-licenses/v2"
 MANIFEST_TYPES="application/vnd.oci.image.index.v1+json"
 MANIFEST_TYPES+=", application/vnd.docker.distribution.manifest.list.v2+json"
 readonly MANIFEST_TYPES
@@ -48,6 +51,7 @@ readonly PINS=(
 	AUR_GORELEASER_SHA256
 	AUR_GITLINT_COMMIT
 	AUR_GITLINT_VERSION
+	GO_LICENSES_VERSION
 )
 declare -A NEW=()
 
@@ -59,8 +63,9 @@ usage()
 		Usage: ${SCRIPT_NAME} [-h] [-n]
 
 		Update the pins of the build image in the Containerfile: the dated
-		archlinux:base-devel tag and digest, the Arch Linux Archive date and the
-		commits and versions of the AUR packages goreleaser-bin and gitlint.
+		archlinux:base-devel tag and digest, the Arch Linux Archive date, the
+		commits and versions of the AUR packages goreleaser-bin and gitlint, and
+		the go-licenses version.
 
 		Options:
 		  -n, --dry-run  print the new pins without changing the Containerfile
@@ -215,9 +220,19 @@ upstream_goreleaser_sha256()
 		sed -n "s/^\([0-9a-f]\{64\}\)  ${GORELEASER_ASSET}\$/\1/p"
 }
 
+# latest_module_version MODULE
+#
+# Print the newest release of the Go module MODULE (a lowercase path) that the
+# Go module proxy reports.
+latest_module_version()
+{
+	fetch "${GO_PROXY}/${1}/@latest" |
+		grep -Eo '"Version": *"[^"]+"' | head -n 1 | cut -d '"' -f 4
+}
+
 resolve_pins()
 {
-	local token tag day aur_sha256 upstream_sha256
+	local token tag day aur_sha256 upstream_sha256 version
 
 	log "resolving archlinux:base-devel"
 	token="$(registry_token)" || die "cannot get a Docker Hub token"
@@ -253,6 +268,13 @@ resolve_pins()
 	NEW[AUR_GITLINT_COMMIT]="$(fetch_aur gitlint)" || die "cannot fetch gitlint"
 	NEW[AUR_GITLINT_VERSION]="$(srcinfo gitlint pkgver)"
 	expect "gitlint version" "${NEW[AUR_GITLINT_VERSION]}" '[0-9]+(\.[0-9]+)+'
+
+	# The image build verifies the module against the Go checksum database.
+	log "resolving go-licenses"
+	version="$(latest_module_version "$GO_LICENSES_MODULE")" ||
+		die "cannot query the Go module proxy for ${GO_LICENSES_MODULE}"
+	expect "go-licenses version" "$version" 'v[0-9]+\.[0-9]+\.[0-9]+'
+	NEW[GO_LICENSES_VERSION]="${version#v}"
 }
 
 # rewrite_pins
