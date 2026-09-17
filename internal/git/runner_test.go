@@ -52,6 +52,32 @@ func TestRunEnvironment(t *testing.T) {
 	}
 }
 
+func TestIsLocalEnvVar(t *testing.T) {
+	t.Parallel()
+	listed := strings.Fields(gittest.Git(t, t.TempDir(), "rev-parse", "--local-env-vars"))
+	if len(listed) == 0 {
+		t.Fatal("git lists no local variables")
+	}
+	for _, name := range listed {
+		want := name != "GIT_CONFIG_PARAMETERS" && name != "GIT_CONFIG_COUNT"
+		if got := git.IsLocalEnvVar(name); got != want {
+			t.Errorf("IsLocalEnvVar(%s) = %t, want %t", name, got, want)
+		}
+	}
+	// Listed by git 2.39 only.
+	if !git.IsLocalEnvVar("GIT_INTERNAL_SUPER_PREFIX") {
+		t.Errorf("IsLocalEnvVar(GIT_INTERNAL_SUPER_PREFIX) = false")
+	}
+	for _, name := range []string{
+		"", "PATH", "git_dir", "GIT_DIR=", "GIT_DIR_X", "GIT_CONFIG_KEY_0",
+		"GIT_CONFIG_VALUE_0", "GIT_CONFIG_GLOBAL", "GIT_NO_LAZY_FETCH", "GIT_ALLOW_PROTOCOL",
+	} {
+		if git.IsLocalEnvVar(name) {
+			t.Errorf("IsLocalEnvVar(%q) = true", name)
+		}
+	}
+}
+
 func TestRunPassesArgumentsIntact(t *testing.T) {
 	t.Parallel()
 	r := gittest.Runner(t)

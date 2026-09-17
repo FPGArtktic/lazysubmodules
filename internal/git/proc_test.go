@@ -22,6 +22,40 @@ import (
 	"github.com/FPGArtktic/lazysubmodules/internal/git"
 )
 
+func TestSignalTreeReachesDescendants(t *testing.T) {
+	t.Parallel()
+	ready := filepath.Join(t.TempDir(), "ready")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	// The shell waits for a background sleep that shares its output pipe. If
+	// only the shell got the signal, the sleep would hold the pipe open and
+	// Wait would return only after WaitDelay.
+	cmd := exec.CommandContext(ctx, "sh", "-c",
+		`trap 'echo got-term; exit 3' TERM; sleep 30 & : >"$1"; wait`, "sh", ready)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Cancel = func() error {
+		return git.SignalTree(cmd.Process, syscall.SIGTERM)
+	}
+	cmd.WaitDelay = 20 * time.Second
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitForFile(t, ready)
+	start := time.Now()
+	cancel()
+	err := cmd.Wait()
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("Wait returned after %v", elapsed)
+	}
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); !ok || exitErr.ExitCode() != 3 {
+		t.Errorf("Wait = %v, want exit status 3 from the trap", err)
+	}
+	if got := out.String(); got != "got-term\n" {
+		t.Errorf("output = %q, want the trap message", got)
+	}
+}
+
 func TestSignalTreeWaitedProcess(t *testing.T) {
 	t.Parallel()
 	// Once a process has been waited for, its ID may belong to another one.

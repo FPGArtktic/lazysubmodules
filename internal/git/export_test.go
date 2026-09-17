@@ -9,15 +9,6 @@ import (
 	"time"
 )
 
-// SignalTree is signalTree with the limit for freezing the process tree
-// that the Runner uses.
-//
-// Context: tests of the package only.
-// Return: as signalTree.
-func SignalTree(p *os.Process, sig syscall.Signal) error {
-	return signalTree(p, sig, freezeTimeout)
-}
-
 // SignalTreeWithin is SignalTree with another limit for freezing the
 // process tree, so that a test does not depend on the load of the machine.
 //

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -83,29 +84,66 @@ func (r *Runner) IsWorktreeRoot(ctx context.Context, dir string) (bool, error) {
 		return false, fmt.Errorf("worktree %s: %w", dir, err)
 	}
 	top, err := r.TopLevel(ctx, dir)
-	if notWorktree(err) {
+	if fatalWith(err, "not a git repository", "must be run in a work tree") {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	return samePath(top, dir)
+	return SamePath(top, dir)
 }
 
-// notWorktree reports whether err is the fatal error of git for a directory
-// without a usable repository, or for a repository without a working tree.
-// Other fatal errors, such as a repository with a dubious owner, are not
-// covered. The messages are stable because git runs with LC_ALL=C.
-func notWorktree(err error) bool {
+// IsGitDir reports whether dir is itself a git directory in which git
+// commands can run, such as a bare repository or the repository of a
+// submodule inside the git directory of its superproject.
+//
+// Git looks for the repository from dir as usual. A directory inside a git
+// directory that is not a repository itself therefore does not count, and
+// neither does a repository whose configured working tree (core.worktree)
+// is missing, since git fails to enter it.
+//
+// Context: any; dir may be missing.
+// Return: false when dir is missing or not a directory, when git finds no
+// repository or another one from dir, or when git cannot enter the working
+// tree; true when git finds dir itself; or an error, for example *Error
+// when git refuses the repository because of its ownership (safe.directory).
+func (r *Runner) IsGitDir(ctx context.Context, dir string) (bool, error) {
+	fi, err := os.Stat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("git dir %s: %w", dir, err)
+	case !fi.IsDir():
+		return false, nil
+	}
+	out, err := r.Run(ctx, dir, "rev-parse", "--absolute-git-dir")
+	if fatalWith(err, "not a git repository", "cannot chdir to ") {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return SamePath(trimNewline(out), dir)
+}
+
+// fatalWith reports whether err is a fatal error of git whose diagnostics
+// contain one of msgs. The messages are stable because git runs with
+// LC_ALL=C.
+func fatalWith(err error, msgs ...string) bool {
 	gitErr, ok := errors.AsType[*Error](err)
-	return ok && gitErr.ExitCode == exitFatal &&
-		(strings.Contains(gitErr.Stderr, "not a git repository") ||
-			strings.Contains(gitErr.Stderr, "must be run in a work tree"))
+	return ok && gitErr.ExitCode == exitFatal && slices.ContainsFunc(msgs, func(msg string) bool {
+		return strings.Contains(gitErr.Stderr, msg)
+	})
 }
 
-// samePath reports whether a and b name the same directory after resolving
-// symbolic links.
-func samePath(a, b string) (bool, error) {
+// SamePath reports whether a and b name the same file or directory after
+// resolving symbolic links.
+//
+// Context: any; relative paths are relative to the current directory.
+// Return: true when both resolve to the same absolute path, or an error when
+// a path cannot be resolved, for example because it does not exist.
+func SamePath(a, b string) (bool, error) {
 	ra, err := realPath(a)
 	if err != nil {
 		return false, err

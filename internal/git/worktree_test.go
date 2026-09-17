@@ -194,6 +194,144 @@ func TestIsWorktreeRootErrors(t *testing.T) {
 	}
 }
 
+func TestIsGitDir(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gittest.SHA1)
+	r := gittest.Runner(t)
+	ctx := t.Context()
+	tmp := t.TempDir()
+	gitDir := filepath.Join(f.super.Dir, ".git")
+	modules := filepath.Join(gitDir, "modules", "lib")
+	notRepo := filepath.Join(gitDir, "modules", "other")
+	empty := filepath.Join(tmp, "empty")
+	file := filepath.Join(tmp, "file")
+	link := filepath.Join(tmp, "link")
+	for _, dir := range []string{notRepo, empty} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gittest.WriteFile(t, file, "x\n")
+	if err := os.Symlink(f.up.Bare, link); err != nil {
+		t.Fatal(err)
+	}
+	check := func(what string, tests map[string]bool) {
+		t.Helper()
+		for dir, want := range tests {
+			got, err := r.IsGitDir(ctx, dir)
+			if err != nil || got != want {
+				t.Errorf("%s: IsGitDir(%s) = %v, %v; want %v", what, dir, got, err, want)
+			}
+		}
+	}
+	check("populated", map[string]bool{
+		gitDir:                         true,
+		modules:                        true,
+		f.up.Bare:                      true,
+		link:                           true,
+		f.super.Dir:                    false,
+		f.sub:                          false,
+		notRepo:                        false, // git finds the superproject
+		empty:                          false,
+		file:                           false,
+		filepath.Join(tmp, "missing"):  false,
+		filepath.Join(file, "missing"): false,
+	})
+
+	// Deinitializing unsets the working tree of the repository.
+	f.super.Deinit(t, f.path)
+	if err := os.Remove(f.sub); err != nil {
+		t.Fatal(err)
+	}
+	check("deinitialized", map[string]bool{modules: true})
+	// Git cannot enter the working tree that the repository names.
+	if err := r.SubmoduleInit(ctx, f.super.Dir, f.path, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(f.sub); err != nil {
+		t.Fatal(err)
+	}
+	check("working tree removed", map[string]bool{modules: false})
+}
+
+func TestIsGitDirErrors(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gittest.SHA1)
+	gitDir := filepath.Join(f.super.Dir, ".git")
+	// Git refuses every repository as if another user owned it.
+	r, err := git.New(git.WithEnv(append(gittest.Env(t),
+		"GIT_TEST_ASSUME_DIFFERENT_OWNER=1")...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok, err := r.IsGitDir(t.Context(), gitDir)
+	gitErr, isGitErr := errors.AsType[*git.Error](err)
+	if ok || !isGitErr || !strings.Contains(gitErr.Stderr, "dubious ownership") {
+		t.Errorf("IsGitDir = %v, %v; want *git.Error about the ownership", ok, err)
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	ok, err = gittest.Runner(t).IsGitDir(ctx, gitDir)
+	if ok || !errors.Is(err, context.Canceled) {
+		t.Errorf("IsGitDir(canceled) = %v, %v; want context.Canceled", ok, err)
+	}
+
+	if os.Geteuid() == 0 {
+		t.Skip("permissions do not apply to root")
+	}
+	locked := filepath.Join(t.TempDir(), "locked")
+	if err := os.Mkdir(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+	ok, err = gittest.Runner(t).IsGitDir(t.Context(), filepath.Join(locked, "repo"))
+	if ok || !errors.Is(err, os.ErrPermission) {
+		t.Errorf("IsGitDir(unreadable) = %v, %v; want a permission error", ok, err)
+	}
+}
+
+func TestSamePath(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "sub")
+	file := filepath.Join(dir, "file")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gittest.WriteFile(t, file, "x\n")
+	links := map[string]string{"sub-link": sub, "file-link": "file", "chain": "sub-link"}
+	for name, dest := range links {
+		if err := os.Symlink(dest, filepath.Join(dir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		a, b string
+		want bool
+	}{
+		{sub, sub, true},
+		{sub, filepath.Join(dir, "sub-link"), true},
+		{filepath.Join(dir, "chain"), sub + "/", true},
+		{filepath.Join(sub, ".."), dir, true},
+		{file, filepath.Join(dir, "file-link"), true},
+		{sub, dir, false},
+		{sub, file, false},
+	}
+	for _, tt := range tests {
+		if got, err := git.SamePath(tt.a, tt.b); err != nil || got != tt.want {
+			t.Errorf("SamePath(%s, %s) = %v, %v; want %v", tt.a, tt.b, got, err, tt.want)
+		}
+	}
+	missing := filepath.Join(dir, "missing")
+	for _, pair := range [][2]string{{sub, missing}, {missing, sub}} {
+		got, err := git.SamePath(pair[0], pair[1])
+		if got || !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("SamePath(%s, %s) = %v, %v; want ErrNotExist", pair[0], pair[1], got, err)
+		}
+	}
+}
+
 func TestCheckout(t *testing.T) {
 	t.Parallel()
 	for _, format := range formats() {

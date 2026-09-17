@@ -241,8 +241,9 @@ func TestMovedGitlink(t *testing.T) {
 	}
 }
 
-func TestNotWorktree(t *testing.T) {
+func TestFatalWith(t *testing.T) {
 	t.Parallel()
+	msgs := []string{"not a git repository", "must be run in a work tree"}
 	tests := []struct {
 		err  error
 		want bool
@@ -256,9 +257,12 @@ func TestNotWorktree(t *testing.T) {
 		{fmt.Errorf("wrapped: %w", &Error{ExitCode: 128, Stderr: "not a git repository"}), true},
 	}
 	for _, tt := range tests {
-		if got := notWorktree(tt.err); got != tt.want {
-			t.Errorf("notWorktree(%v) = %t, want %t", tt.err, got, tt.want)
+		if got := fatalWith(tt.err, msgs...); got != tt.want {
+			t.Errorf("fatalWith(%v) = %t, want %t", tt.err, got, tt.want)
 		}
+	}
+	if fatalWith(&Error{ExitCode: 128, Stderr: "fatal: x"}) {
+		t.Errorf("fatalWith without messages = true")
 	}
 }
 
@@ -412,7 +416,7 @@ func TestDescendants(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_ = signalTree(cmd.Process, syscall.SIGKILL, freezeTimeout)
+		_ = SignalTree(cmd.Process, syscall.SIGKILL)
 		_ = cmd.Wait()
 	})
 	var found []int

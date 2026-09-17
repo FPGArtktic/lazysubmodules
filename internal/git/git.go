@@ -87,10 +87,19 @@ func newRunner(lookPath func(string) (string, error), opts ...Option) (*Runner, 
 	return r, nil
 }
 
-// isLocalEnvVar reports whether name is a repository-local variable, as
-// listed by "git rev-parse --local-env-vars" of git 2.39 or later, excluding
-// the variables that carry command line configuration.
-func isLocalEnvVar(name string) bool {
+// IsLocalEnvVar reports whether an environment variable ties git to a
+// particular repository, such as GIT_DIR or GIT_INDEX_FILE.
+//
+// The list covers the variables printed by "git rev-parse --local-env-vars"
+// of git 2.39 and later, except GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT,
+// which carry command line configuration. The Runner removes these
+// variables from the environment it inherits; a program that runs other
+// commands in a repository, as "git submodule foreach" does, should remove
+// them as well.
+//
+// Context: any.
+// Return: true for a repository-local variable name (without "=value").
+func IsLocalEnvVar(name string) bool {
 	switch name {
 	case "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_OBJECT_DIRECTORY",
 		"GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE",
@@ -108,7 +117,7 @@ func buildEnv(base, extra []string) []string {
 	env := make([]string, 0, len(base)+2+len(extra))
 	for _, kv := range base {
 		name, _, _ := strings.Cut(kv, "=")
-		if isLocalEnvVar(name) || name == "LC_ALL" || name == "GIT_OPTIONAL_LOCKS" {
+		if IsLocalEnvVar(name) || name == "LC_ALL" || name == "GIT_OPTIONAL_LOCKS" {
 			continue
 		}
 		env = append(env, kv)
@@ -163,7 +172,7 @@ func (r *Runner) Exec(ctx context.Context, c Cmd) (string, error) {
 		cmd.Stderr = &stderr
 	}
 	cmd.Cancel = func() error {
-		return signalTree(cmd.Process, syscall.SIGTERM, freezeTimeout)
+		return SignalTree(cmd.Process, syscall.SIGTERM)
 	}
 	cmd.WaitDelay = waitDelay
 	if err := cmd.Run(); err != nil {

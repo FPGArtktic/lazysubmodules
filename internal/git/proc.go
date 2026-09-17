@@ -16,10 +16,10 @@ import (
 const (
 	// procDir is the mount point of the Linux proc file system.
 	procDir = "/proc"
-	// freezeTimeout bounds how long signalTree waits for the processes it
+	// freezeTimeout bounds how long SignalTree waits for the processes it
 	// stops to reach a state in which they cannot start processes.
 	freezeTimeout = time.Second
-	// uninterruptibleWait bounds how long signalTree waits for a process in
+	// uninterruptibleWait bounds how long SignalTree waits for a process in
 	// an uninterruptible wait, which stops only once the wait ends.
 	uninterruptibleWait = 200 * time.Millisecond
 	// stopPollInterval is the delay between two checks of that state, and
@@ -27,7 +27,7 @@ const (
 	stopPollInterval = time.Millisecond
 )
 
-// signalTree sends sig to the process p and to all its descendants.
+// SignalTree sends sig to the process p and to all its descendants.
 //
 // Signaling a process alone is often not enough: "git submodule" runs a
 // shell script that starts "git submodule--helper" without exec, which in
@@ -51,7 +51,7 @@ const (
 // not inherit the pending signal. Then the descendants, children first, and
 // p get sig, and all of them get SIGCONT in the same order, so that they
 // can handle sig, for example by removing lock files. The freezing ends
-// after timeout in any case. The process group is left alone, so an
+// after one second in any case. The process group is left alone, so an
 // interactive command stays in the foreground group of its terminal.
 //
 // Context: Linux; p is a child of the caller, such as the process of an
@@ -61,6 +61,11 @@ const (
 // Return: nil; an error wrapping os.ErrProcessDone, without signaling any
 // process, when p has been waited for (exec.Cmd.Cancel may run after that,
 // and exec.Cmd ignores this error); or another error from signaling p.
+func SignalTree(p *os.Process, sig syscall.Signal) error {
+	return signalTree(p, sig, freezeTimeout)
+}
+
+// signalTree implements SignalTree; the freezing ends after timeout.
 func signalTree(p *os.Process, sig syscall.Signal, timeout time.Duration) error {
 	if err := p.Signal(syscall.SIGSTOP); err != nil {
 		return err
@@ -81,7 +86,7 @@ func signalTree(p *os.Process, sig syscall.Signal, timeout time.Duration) error 
 	return err
 }
 
-// procTree is a process and its descendants while signalTree freezes them.
+// procTree is a process and its descendants while SignalTree freezes them.
 type procTree struct {
 	root *os.Process
 	sig  syscall.Signal
