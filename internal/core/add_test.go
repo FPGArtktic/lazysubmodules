@@ -221,9 +221,10 @@ func TestAddRefused(t *testing.T) {
 		{f.up.Bare, "x", manifest.ModeBranch, "a..b", core.ErrInvalidArgument},
 		{f.up.Bare, "x", manifest.ModeCommit, "HEAD", core.ErrInvalidArgument},
 		{f.up.Bare, "x", tag, "-v1", core.ErrInvalidArgument},
-		{f.up.Bare, "lib/inner", tag, "v1", core.ErrInvalidArgument},
-		{f.up.Bare, "link/x", tag, "v1", core.ErrInvalidArgument},
-		{f.up.Bare, "README/x", tag, "v1", core.ErrInvalidArgument},
+		// Unsafe states of the working tree are refusals, as for update.
+		{f.up.Bare, "lib/inner", tag, "v1", core.ErrPathExists},
+		{f.up.Bare, "link/x", tag, "v1", core.ErrSymlinkPath},
+		{f.up.Bare, "README/x", tag, "v1", core.ErrPathExists},
 		{f.up.Bare, "README", tag, "v1", core.ErrPathExists},
 		{f.up.Bare, "link", tag, "v1", core.ErrPathExists},
 		{f.up.Bare, "lib", tag, "v1", core.ErrPathExists},
@@ -233,12 +234,16 @@ func TestAddRefused(t *testing.T) {
 		{f.up.Bare, "deep", tag, "v1", core.ErrPathExists},
 		{f.up.Bare, "ghost", tag, "v1", core.ErrPathExists},
 		{f.up.Bare, "outer", tag, "v1", core.ErrPathExists},
-		{f.up.Bare, "outer/inner/x", tag, "v1", core.ErrInvalidArgument},
+		{f.up.Bare, "outer/inner/x", tag, "v1", core.ErrPathExists},
 	} {
 		change, err := f.repo().Add(t.Context(), core.AddOptions{
 			URL: c.url, Path: c.path, Mode: c.mode, Ref: c.ref,
 		})
 		wantErr(t, "Add("+c.path+")", err, c.want)
+		if !errors.Is(c.want, core.ErrInvalidArgument) &&
+			(errors.Is(err, core.ErrInvalidArgument) || !errors.Is(err, core.ErrRefused)) {
+			t.Errorf("Add(%s) = %v, want only a refusal", c.path, err)
+		}
 		if change != (core.Change{}) {
 			t.Errorf("Add(%s) returned %+v", c.path, change)
 		}

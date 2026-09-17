@@ -71,10 +71,13 @@ type AddOptions struct {
 // is the lock entry that the index recorded for the path before (normally
 // none), and whose Init and Clone are set; an error wrapping
 // ErrInvalidArgument for an invalid URL, path, mode or ref; an error
-// wrapping ErrPathExists; an error wrapping ErrMissingRef when the ref does
-// not resolve in the clone; an error from reading the working tree copy of
-// .gitmodules or the lock file, before anything is cloned, such as one
-// wrapping git.ErrNotRegularFile for a copy that is not a regular file,
+// wrapping ErrPathExists for a path that exists, belongs to or lies inside
+// another submodule or leads through a file; an error wrapping
+// ErrSymlinkPath for a path that leads through a symbolic link; an error
+// wrapping ErrMissingRef when the ref does not resolve in the clone; an
+// error from reading the working tree copy of .gitmodules or the lock
+// file, before anything is cloned, such as one wrapping
+// git.ErrNotRegularFile for a copy that is not a regular file,
 // manifest.ErrInvalidMode or lock.ErrInvalidEntry; *git.Error; or an error
 // from inspecting, creating or removing files. After a rollback, the error
 // of the failed step is joined with the errors of the rollback, if any.
@@ -116,8 +119,8 @@ func (r *Repo) checkAdd(ctx context.Context, opts AddOptions) (string, error) {
 			return "", fmt.Errorf("%s: %w: used by submodule %s",
 				displayName(p), ErrPathExists, displayName(sub.Name))
 		case strings.HasPrefix(p, sub.Path+"/"):
-			return "", &invalidError{what: "path", value: p,
-				reason: "inside submodule " + displayName(sub.Name)}
+			return "", fmt.Errorf("%s: %w: inside submodule %s",
+				displayName(p), ErrPathExists, displayName(sub.Name))
 		}
 	}
 	return p, r.checkNewPath(ctx, p)
@@ -125,14 +128,15 @@ func (r *Repo) checkAdd(ctx context.Context, opts AddOptions) (string, error) {
 
 // checkNewPath checks that nothing exists at the path of a new submodule,
 // neither in the working tree nor as a gitlink in the index, and that the
-// existing directories leading to it are not symbolic links.
+// existing directories leading to it are not symbolic links. Each of these
+// is an unsafe state of the working tree, a refusal, not an invalid path.
 func (r *Repo) checkNewPath(ctx context.Context, p string) error {
 	_, err := os.Lstat(filepath.Join(r.root, filepath.FromSlash(p)))
 	switch {
 	case err == nil:
 		return fmt.Errorf("%s: %w", displayName(p), ErrPathExists)
 	case errors.Is(err, syscall.ENOTDIR):
-		return &invalidError{what: "path", value: p, reason: "leads through a file"}
+		return fmt.Errorf("%s: %w: it leads through a file", displayName(p), ErrPathExists)
 	case !errors.Is(err, fs.ErrNotExist):
 		return fmt.Errorf("check path: %w", err)
 	}
@@ -141,7 +145,7 @@ func (r *Repo) checkNewPath(ctx context.Context, p string) error {
 		return err
 	}
 	if link {
-		return &invalidError{what: "path", value: p, reason: "leads through a symbolic link"}
+		return fmt.Errorf("%s: %w", displayName(p), ErrSymlinkPath)
 	}
 	_, err = r.git.IndexGitlink(ctx, r.root, p)
 	switch {
