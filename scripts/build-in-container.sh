@@ -160,8 +160,9 @@ usage()
 		Targets in the build image:
 		  build         go build for the host architecture (binaries in bin/)
 		  test          go test -race ./...
-		  lint          golangci-lint, shellcheck scripts/*.sh,
-		                scripts/check-headers.sh
+		  lint          golangci-lint, shellcheck on the shell scripts
+		                (scripts/*.sh, docs/demo/*.sh) and the AUR recipes
+		                (packaging/aur/*/PKGBUILD), scripts/check-headers.sh
 		  gitlint       lint the commit messages selected by GITLINT_RANGE
 		  licenses      go-licenses check ./..., allowing only the licenses
 		                ${ALLOWED_LICENSES}
@@ -654,7 +655,8 @@ target_test()
 
 target_lint()
 {
-	local -a scripts=(scripts/*.sh)
+	# Every shell script, and the AUR recipes, which are bash as well.
+	local -a scripts=(scripts/*.sh docs/demo/*.sh packaging/aur/*/PKGBUILD)
 	local rc=0
 
 	# Run every linter, then report the combined result.

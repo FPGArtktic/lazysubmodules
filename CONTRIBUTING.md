@@ -68,7 +68,7 @@ Targets run in the given order and the script stops at the first failure:
 |---|---|
 | `build` | `go build` for the host architecture; binaries land in `bin/` |
 | `test` | `go test -race ./...` |
-| `lint` | `golangci-lint run`, `shellcheck scripts/*.sh` and `scripts/check-headers.sh` |
+| `lint` | `golangci-lint run`, `shellcheck` on `scripts/*.sh`, `docs/demo/*.sh` and `packaging/aur/*/PKGBUILD`, and `scripts/check-headers.sh` |
 | `gitlint` | Validate the commit messages selected by `GITLINT_RANGE` |
 | `licenses` | `go-licenses check ./...` (see [Dependencies](#dependencies)) |
 | `snapshot` | `goreleaser release --snapshot --clean`, unsigned, output in `dist/` |
@@ -374,7 +374,10 @@ The complete linter configuration is in `.golangci.yml`.
 - Tab indentation.
 - The opening brace of a function goes on a new line.
 - `set -euo pipefail`.
-- `shellcheck` reports zero warnings.
+- `shellcheck` reports zero warnings. `lint` checks `scripts/*.sh`,
+  `docs/demo/*.sh` and the AUR recipes; add a shell script in another
+  directory to the list in `target_lint` of
+  `scripts/build-in-container.sh`.
 - Variables are quoted; constants are `readonly`.
 
 ## File headers
