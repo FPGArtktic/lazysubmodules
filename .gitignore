@@ -13,6 +13,10 @@ project.md
 # scripts/build-in-container.sh: coverage writes its report to coverage/.
 /coverage/
 
+# scripts/build-in-container.sh: docs writes the built site to docs/_build/
+# (html/ and the Sphinx cache in doctrees/).
+/docs/_build/
+
 # scripts/third-party-licenses.sh, a GoReleaser before hook, writes the
 # license notices for archives and packages to build/third-party/.
 /build/

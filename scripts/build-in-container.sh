@@ -5,8 +5,8 @@
 # build-in-container.sh - run LazySubmodules build targets in containers
 #
 # Most targets run inside the build image built from the Containerfile, so
-# developer machines and CI use the same pinned toolchain. test-compat and
-# package-test use other pinned images.
+# developer machines and CI use the same pinned toolchain. test-compat,
+# package-test and docs use other pinned images.
 #
 # Usage: scripts/build-in-container.sh [-h] TARGET...
 #
@@ -23,7 +23,7 @@ readonly MODULE_PATH="github.com/FPGArtktic/lazysubmodules"
 readonly IMAGE_NAME="localhost/lazysubmodules-build"
 readonly TARGETS=(
 	build test coverage lint gitlint licenses snapshot release
-	test-compat package-test
+	test-compat package-test docs
 	image image-tag image-save image-load
 )
 
@@ -37,6 +37,13 @@ readonly DEB_TEST_IMAGE="docker.io/library/debian:trixie-slim\
 @sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132"
 readonly RPM_TEST_IMAGE="registry.fedoraproject.org/fedora:44\
 @sha256:61beafd34111e1cb85fb49377ceadeee0a53622dbc20670ed8ca303f0e17ed9c"
+
+# Python image of "docs". Read the Docs builds the site with Python 3.13
+# (.readthedocs.yaml), so the local build uses that version too, and the
+# requirements are resolved for it. The slim variant carries no compiler,
+# which the pinned wheels do not need.
+readonly DOCS_IMAGE="docker.io/library/python:3.13-slim-trixie\
+@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285"
 
 # Mount point of the repository. The Containerfile marks it as a git
 # safe.directory.
@@ -65,6 +72,11 @@ readonly ALLOWED_LICENSES="Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT"
 # Output directory of "coverage", relative to the repository root. Git
 # ignores it.
 readonly COVERAGE_DIR="coverage"
+
+# Output directory of "docs", relative to the repository root. Git ignores it.
+# The built site lands in html/ and the Sphinx cache in doctrees/, so the
+# published tree holds nothing but the site.
+readonly DOCS_DIR="docs/_build"
 
 # Report of "coverage", an awk program run in the build image. Its operands
 # are the coverage profile, the output of go test and the output of
@@ -316,6 +328,10 @@ usage()
 		                "lazysubmodules version" and "lsm version", and check
 		                the installed license notices; needs network for the
 		                git dependency
+		  docs          build the documentation site with Sphinx, as Read the
+		                Docs does: python:3.13-slim-trixie, the pinned
+		                docs/requirements.txt and warnings as errors; site in
+		                ${DOCS_DIR}/html; needs network for the requirements
 
 		Build image management:
 		  image         build the build image from the Containerfile, unless it
@@ -330,12 +346,14 @@ usage()
 		unchanged one, remove the image first ("<engine> rmi" with the reference
 		that image-tag prints).
 
-		The containers of all targets except release and package-test run with
-		--network=none, and Go dependencies come from vendor/. Images need the
-		network when they are missing: building the build image (image, or any
-		target that runs in it) downloads the toolchain, and test-compat and
-		package-test pull their images. To work offline, load the build image
-		with image-load and pull the test-compat image beforehand.
+		The containers of all targets except release, package-test and docs run
+		with --network=none, and Go dependencies come from vendor/. Images need
+		the network when they are missing: building the build image (image, or
+		any target that runs in it) downloads the toolchain, and test-compat,
+		package-test and docs pull their images. docs also needs it on every
+		run, to install the Python requirements of the site. To work offline,
+		load the build image with image-load and pull the test-compat image
+		beforehand.
 
 		The build image needs podman or docker with BuildKit (the default
 		builder of docker; the script sets DOCKER_BUILDKIT=1).
@@ -970,6 +988,43 @@ target_package_test()
 	'
 }
 
+# Build the documentation site the way Read the Docs does: the same Python
+# version, the same pinned requirements, and warnings as errors.
+#
+# The requirements are installed from docs/requirements.txt, with the hashes it
+# pins, into a virtual environment inside the container, on every run. Two
+# alternatives were rejected. Sphinx in the build image would tie the pins of
+# the site to the Containerfile hash, so a documentation pin would rebuild the
+# whole toolchain image, and it would build with the Python of Arch Linux
+# rather than the 3.13 the requirements are resolved for. A named cache volume
+# for the environment would not be writable: the python image lacks the
+# world-writable cache directories that make a fresh volume usable for the
+# container user, as for test-compat. The price is that this target downloads
+# the wheels on every run and therefore needs the network.
+target_docs()
+{
+	local dir="$DOCS_DIR"
+
+	# A failed run must not leave the site of an earlier one behind, and Read
+	# the Docs builds from an empty directory as well.
+	rm -rf -- "$dir"
+	# pip installs wheels only (the image has no compiler) and nothing but the
+	# pinned files (--require-hashes). sphinx-build: -W turns warnings into
+	# errors, as fail_on_warning does on Read the Docs, and Sphinx reports all
+	# of them before it fails; -b dirhtml produces the clean URLs of the
+	# published site; -d keeps the Sphinx cache out of that site.
+	# shellcheck disable=SC2016 # expanded by the container's shell
+	run_container "$DOCS_IMAGE" default 0 --pull=missing -- sh -euc '
+		python -m venv "${HOME}/docs-venv"
+		"${HOME}/docs-venv/bin/pip" install --quiet --no-cache-dir \
+			--disable-pip-version-check --require-hashes \
+			--only-binary=:all: --requirement docs/requirements.txt
+		exec "${HOME}/docs-venv/bin/sphinx-build" -W -b dirhtml \
+			-d "${1}/doctrees" docs "${1}/html"
+	' sh "$dir" || return 1
+	log "documentation site: ${dir}/html/index.html"
+}
+
 target_image()
 {
 	if image_exists; then
@@ -1075,7 +1130,7 @@ main()
 	for target in "${targets[@]}"; do
 		log "target ${target} (${ENGINE}, ${IMAGE})"
 		case "$target" in
-		image-tag | test-compat | package-test) ;;
+		image-tag | test-compat | package-test | docs) ;;
 		image | image-load)
 			check_build_arch
 			;;

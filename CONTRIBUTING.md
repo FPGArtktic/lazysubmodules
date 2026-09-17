@@ -24,6 +24,7 @@ license, `GPL-3.0-only` (see [LICENSE](LICENSE)), and you certify the
 - [Testing rules](#testing-rules)
 - [Test coverage](#test-coverage)
 - [Demo and recordings](#demo-and-recordings)
+- [Documentation site](#documentation-site)
 - [Dependencies](#dependencies)
 - [Third-party notices](#third-party-notices)
 - [AUR recipe](#aur-recipe)
@@ -78,6 +79,7 @@ Targets run in the given order and the script stops at the first failure:
 | `release` | `goreleaser release --clean` (CI only: needs network and credentials) |
 | `test-compat` | `go test -race ./...` with Git 2.39.5, the oldest supported Git |
 | `package-test` | Install the `dist/` `.deb` in Debian and the `.rpm` in Fedora, for the host architecture, run `lazysubmodules version` and `lsm version`, and check the installed license notices (see [Third-party notices](#third-party-notices)) |
+| `docs` | Build the documentation site with Sphinx, the way Read the Docs builds it; site in `docs/_build/html` (see [Documentation site](#documentation-site)) |
 | `image` | Build the build image from `Containerfile`, unless it exists |
 | `image-tag` | Print the build image reference |
 | `image-save` | Save the build image to the archive `IMAGE_ARCHIVE` |
@@ -85,11 +87,13 @@ Targets run in the given order and the script stops at the first failure:
 
 The targets from `build` to `release` run in the build image. `test-compat`
 uses the official `golang:1.27.1-bookworm` image (Debian bookworm ships Git
-2.39.5), and `package-test` uses `debian:trixie-slim` and `fedora:44`; all
-three are pinned by digest in the script. `package-test` needs the packages
-of a previous `snapshot`, and it fails when `dist/` has none. It installs
-only the packages for the host architecture, so CI tests the `amd64`
-packages; the `arm64` ones are built but not installed.
+2.39.5), `package-test` uses `debian:trixie-slim` and `fedora:44`, and
+`docs` uses `python:3.13-slim-trixie`, the Python version Read the Docs
+builds the site with; all of them are pinned by digest in the script.
+`package-test` needs the packages of a previous `snapshot`, and it fails
+when `dist/` has none. It installs only the packages for the host
+architecture, so CI tests the `amd64` packages; the `arm64` ones are built
+but not installed.
 
 Before you propose a commit, run at least:
 
@@ -103,6 +107,7 @@ The full CI sequence is:
 scripts/build-in-container.sh image gitlint lint licenses test build snapshot package-test
 scripts/build-in-container.sh image coverage
 scripts/build-in-container.sh test-compat
+scripts/build-in-container.sh docs
 ```
 
 How the script behaves:
@@ -131,17 +136,20 @@ How the script behaves:
 - **Image archive:** `image-save` and `image-load` need `IMAGE_ARCHIVE`; a
   relative path is relative to the current directory. Both check it before
   any target runs.
-- **Offline:** the containers of all targets except `release` and
-  `package-test` run with `--network=none`. Dependencies come from the
-  committed `vendor/` directory (`GOFLAGS=-mod=vendor`), and
+- **Offline:** the containers of all targets except `release`,
+  `package-test` and `docs` run with `--network=none`. Dependencies come
+  from the committed `vendor/` directory (`GOFLAGS=-mod=vendor`), and
   `GOTOOLCHAIN=local` prevents Go toolchain downloads.
 - **Images need the network when missing:** building the build image
   (`image`, or any target that runs in it while the image is missing)
-  downloads the toolchain, and `test-compat` and `package-test` pull their
-  images. On a machine without network access, load the build image with
-  `image-load` and pull the `golang` image of `test-compat` beforehand.
+  downloads the toolchain, and `test-compat`, `package-test` and `docs`
+  pull their images. On a machine without network access, load the build
+  image with `image-load` and pull the `golang` image of `test-compat`
+  beforehand.
 - **Network for `package-test`:** `apt` and `dnf` download the `git`
   dependency of the packages from the distribution mirrors.
+- **Network for `docs`:** the target installs the pinned Python
+  requirements of the site into the container on every run.
 - **cgo:** builds use `CGO_ENABLED=0`. The race detector needs cgo, so
   `test`, `coverage` and `test-compat` enable it; `gcc` comes with the
   images.
@@ -198,6 +206,12 @@ Deliberate choices, for the reasons given above:
 - `test-compat` mounts no cache volumes: the `golang` image lacks the
   world-writable cache directories that make fresh volumes writable, so its
   build cache lives in the container and is discarded with it.
+- `docs` installs Sphinx into a virtual environment in the container on
+  every run, and mounts no cache volume either, for the reason above.
+  Sphinx in the build image would tie the pins of the site to the
+  `Containerfile` hash, so a documentation pin would rebuild the whole
+  toolchain image, and it would build with the Python of Arch Linux instead
+  of the 3.13 the requirements are resolved for.
 - `package-test` runs the distribution images as their own root user, with
   `dist/` mounted read-only, because installing packages needs root.
 
@@ -494,7 +508,7 @@ Signed-off-by: Name <email>
 | `scripts` | `scripts/`, including the demo and the recording script |
 | `ci` | `.github/workflows/ci.yml` |
 | `release` | `.goreleaser.yaml`, `.github/workflows/release.yml`, `packaging/` |
-| `docs` | `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `DCO`, `docs/` (recordings, tapes, images), `examples/`, the issue forms and the pull request template in `.github/` |
+| `docs` | `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `DCO`, `docs/` (the documentation site, the recordings and their tapes, images), `.readthedocs.yaml`, `examples/`, the issue forms and the pull request template in `.github/` |
 
 No other prefixes are accepted. The release changelog is grouped by these
 prefixes.
@@ -800,6 +814,62 @@ scripts/record-demos.sh --binary PATH   # record another binary
 terminal size, how to write a tape and how to update the pinned VHS
 image.
 
+## Documentation site
+
+<https://lazysubmodules.readthedocs.io> is built from the Markdown pages
+in `docs/`: MyST for the Markdown, Sphinx as the builder, Furo as the
+theme. `docs/conf.py` configures the build, `docs/index.md` is the start
+page, and the pages are grouped by purpose (`getting-started/`, `guide/`,
+`reference/`, `explanation/`, `project/`). The page
+[`docs/project/documentation.md`](docs/project/documentation.md) is about
+the site itself: the layout, the writing rules, and how the pages are kept
+in agreement with the program.
+
+Build the site as Read the Docs and CI build it:
+
+```sh
+scripts/build-in-container.sh docs   # site in docs/_build/html
+```
+
+The target runs Sphinx in the pinned `python:3.13-slim-trixie` image, with
+the requirements of `docs/requirements.txt` installed into a virtual
+environment in the container, and turns every warning into an error
+(`-W`), as `fail_on_warning` in `.readthedocs.yaml` does. Git ignores
+`docs/_build/`. Read `docs/_build/html/index.html` in a browser, or serve
+the directory, because the site uses clean URLs (`dirhtml`):
+
+```sh
+python3 -m http.server -d docs/_build/html
+```
+
+- **Who builds it.** Read the Docs builds the site itself from
+  `.readthedocs.yaml` on every push, and publishes it. The `docs` job of
+  the CI workflow builds the same site for every pull request and keeps it
+  as the artifact `docs-site` for 14 days, so a warning is found before it
+  reaches the published site.
+- **Pinned requirements.** `docs/requirements.in` names the direct
+  dependencies with version ranges and records their licenses.
+  `docs/requirements.txt` holds the exact versions with hashes, resolved
+  for Python 3.13, and is what both builds install. Regenerate it with the
+  `uv` command in the header of `docs/requirements.in`, build the site, and
+  commit both files together.
+- **Generated help texts.** The command line reference includes the help of
+  every command from `docs/reference/cli/_generated/`, so the site shows
+  exactly what the binary prints. `scripts/gen-cli-docs.sh` writes those
+  files from the binary, and `--check` fails when one is stale, left over,
+  or when a command has no reference page:
+
+  ```sh
+  scripts/build-in-container.sh build   # or a host build into bin/
+  scripts/gen-cli-docs.sh               # write the files
+  scripts/gen-cli-docs.sh --check       # fail when they are stale
+  ```
+
+- **Headers.** A new page needs the two SPDX and copyright lines as HTML
+  comments, like every other file (see [File headers](#file-headers)).
+- **Prose in two places.** Behaviour described both in `README.md` and on
+  the site, such as the terminal interface keys, is changed in both.
+
 ## Dependencies
 
 The dependency set is deliberately small: Bubble Tea, Lip Gloss and Bubbles
@@ -905,9 +975,10 @@ directly: `scripts/third-party-licenses.sh -h` lists its options.
 
 ## AUR recipe
 
-`packaging/aur/lazysubmodules-git/` holds the recipe of the planned AUR
-package `lazysubmodules-git`, which builds the default branch of the
-GitHub repository. The package is not published yet.
+`packaging/aur/lazysubmodules-git/` holds the recipe of the AUR package
+[`lazysubmodules-git`](https://aur.archlinux.org/packages/lazysubmodules-git),
+which builds the default branch of the GitHub repository. The copy in the
+AUR is published from this directory.
 
 | File | Content |
 |---|---|

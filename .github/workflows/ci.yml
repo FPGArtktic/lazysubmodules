@@ -219,3 +219,28 @@ jobs:
 
       - name: test-compat
         run: scripts/build-in-container.sh test-compat
+
+  # The documentation site, built the way Read the Docs builds it: a Sphinx
+  # warning fails the job, as fail_on_warning does there, so a broken cross
+  # reference or a stale include never reaches the published site. Like
+  # compat, this job uses a pinned image of its own instead of the build
+  # image, so it neither restores nor saves the image cache.
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: docs
+        run: scripts/build-in-container.sh docs
+
+      - name: Upload documentation site
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs-site
+          path: docs/_build/html/
+          if-no-files-found: error
+          retention-days: 14
