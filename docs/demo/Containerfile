@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+#
+# Recording image for the demo GIFs; scripts/record-demos.sh builds it.
+#
+# The official VHS image brings VHS, ttyd, Chromium, ffmpeg, bash and the
+# fonts, but not git, which LazySubmodules and the demo need. This image
+# adds git, column (bsdextrautils) for the scripting example and gifsicle,
+# which shrinks the recorded GIFs.
+#
+# Pins: the VHS image by digest, and Debian packages by version from the
+# snapshot.debian.org state of the day the VHS image was built. VHS 0.11.0
+# is used because 0.12.0 writes no GIF at all: it starts ffmpeg with a
+# context that is already canceled (charmbracelet/vhs pull requests 788
+# and 789). When the VHS pin changes, set DEBIAN_SNAPSHOT to the build
+# date of the new image and update the package versions to that snapshot.
+
+ARG VHS_IMAGE_TAG=v0.11.0
+ARG VHS_IMAGE_DIGEST=sha256:9d5fc3dc0c160b0fb1d2212baff07e6bdf3fa9438c504a3237484567302fcf93
+
+FROM ghcr.io/charmbracelet/vhs:${VHS_IMAGE_TAG}@${VHS_IMAGE_DIGEST}
+
+ARG DEBIAN_SNAPSHOT=20260310T000000Z
+
+# The snapshot is older than the validity period of its Release files,
+# hence Check-Valid-Until=false; the signatures are still checked.
+RUN printf '%s\n' \
+		'Types: deb' \
+		"URIs: http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}" \
+		'Suites: trixie trixie-updates' \
+		'Components: main' \
+		'Signed-By: /usr/share/keyrings/debian-archive-keyring.pgp' \
+		'' \
+		'Types: deb' \
+		"URIs: http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}" \
+		'Suites: trixie-security' \
+		'Components: main' \
+		'Signed-By: /usr/share/keyrings/debian-archive-keyring.pgp' \
+		>/etc/apt/sources.list.d/debian.sources \
+	&& apt-get -o Acquire::Check-Valid-Until=false update \
+	&& apt-get install --yes --no-install-recommends --no-upgrade \
+		bsdextrautils=2.41-5 \
+		gifsicle=1.96-1 \
+		git=1:2.47.3-0+deb13u1 \
+	&& rm -rf /var/lib/apt/lists/*
+
+# UTF-8 for the box drawing characters of the terminal interface.
+ENV LANG=C.UTF-8

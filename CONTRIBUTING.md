@@ -43,6 +43,8 @@ license, `GPL-3.0-only` (see [LICENSE](LICENSE)), and you certify the
 - For `scripts/demo.sh`: Bash, Git 2.39 or later and, for the signed tag
   of the demo, `ssh-keygen` (see
   [Demo and recordings](#demo-and-recordings)).
+- For `scripts/record-demos.sh`: Podman or Docker, and network access
+  once, to build the recording image.
 
 All other tools (Go, GoReleaser, golangci-lint, cosign, syft, gitlint,
 shellcheck, go-licenses) come at pinned versions from the build image
@@ -426,7 +428,8 @@ Files that cannot have a header are checked in another way:
 
 - **Images** have no comments. GIF images are allowed only directly in
   `docs/demo/` and PNG images only directly in `docs/assets/`, and they
-  must start with the GIF or PNG signature.
+  must start with the GIF or PNG signature. The License section of the
+  README covers them.
 - **AUR recipe directories** under `packaging/aur/`: `LICENSE` must be an
   exact copy of the top-level `LICENSE`, and `.SRCINFO`, which `makepkg`
   generates, must start with `pkgbase = `.
@@ -474,10 +477,10 @@ Signed-off-by: Name <email>
 | `porcelain` | `internal/porcelain` |
 | `tui` | `internal/tui` |
 | `build` | Go module, `vendor/`, `Containerfile` and its pins, linter configuration |
-| `scripts` | `scripts/`, including the demo |
+| `scripts` | `scripts/`, including the demo and the recording script |
 | `ci` | `.github/workflows/ci.yml` |
 | `release` | `.goreleaser.yaml`, `.github/workflows/release.yml` |
-| `docs` | `README.md`, `CONTRIBUTING.md`, `LICENSE`, `DCO`, `examples/` |
+| `docs` | `README.md`, `CONTRIBUTING.md`, `LICENSE`, `DCO`, `docs/` (recordings and tapes), `examples/` |
 
 No other prefixes are accepted. The release changelog is grouped by these
 prefixes.
@@ -607,6 +610,34 @@ statuses with the committed transcript, so a stale transcript fails the
 test. When the final `.gitmodules` or `.lsm.lock` change, copy them from
 `DIR/firmware` of a demo kept with `--keep DIR`, replace
 `git.example.invalid` with `git.example.org`, and keep their comments.
+
+### The recordings
+
+The animated GIFs in `docs/demo/`, which the README embeds, are recorded
+with [VHS](https://github.com/charmbracelet/vhs) from the tape of the same
+name, on the demo superproject in its first state. `scripts/record-demos.sh`
+records them in a container without network access:
+
+```sh
+scripts/record-demos.sh                 # build bin/lazysubmodules, record all
+scripts/record-demos.sh hero cli        # only these
+scripts/record-demos.sh --binary PATH   # record another binary
+```
+
+- **Requirements:** Podman or Docker (`CONTAINER_ENGINE` selects one, as
+  for the build script). Building the recording image from
+  `docs/demo/Containerfile` needs network access once; recording takes
+  about a minute per GIF.
+- **Checks:** every tape waits for the states it shows, so VHS fails
+  instead of recording something else. The script fails when a GIF is
+  missing or larger than 1.5 MB.
+- **When:** record again when the interface or the output that a GIF
+  shows changes, look at the result, and commit the GIFs together with
+  their tapes.
+
+[`docs/demo/README.md`](docs/demo/README.md) describes the tapes, the
+terminal size, how to write a tape and how to update the pinned VHS
+image.
 
 ## Dependencies
 

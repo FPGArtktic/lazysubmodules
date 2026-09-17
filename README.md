@@ -12,6 +12,13 @@
 [![Platform](https://img.shields.io/badge/platform-linux%20amd64%20%7C%20arm64-lightgrey)](#installation)
 ![Made in Poland](https://img.shields.io/badge/made%20in-Poland-DC143C?labelColor=white)
 
+![The LazySubmodules terminal interface on a superproject with fourteen
+submodules: a table with the name, mode, ref, lock and colored state of
+each submodule, and a preview of the selected one. The recording moves
+through the table, opens the details of u-boot, updates u-boot after a
+confirmation until its state turns ok, and shows the help
+page.](docs/demo/hero.gif)
+
 LazySubmodules manages Git submodules that track **branches, tags, tag
 patterns or fixed commits**. It has a scriptable command line interface
 and an interactive terminal user interface (TUI). The binary is called
@@ -97,6 +104,11 @@ lazysubmodules tui
 it ends with; its [README](examples/README.md) describes the options and
 every submodule of the demo.
 
+The animated GIFs in this README are recorded from the same demo with
+[VHS](https://github.com/charmbracelet/vhs). `scripts/record-demos.sh`
+regenerates them in a container (Podman or Docker); see
+[`docs/demo/README.md`](docs/demo/README.md).
+
 ## Why LazySubmodules
 
 Native Git can track only **branches**: set `submodule.<name>.branch` and
@@ -145,6 +157,13 @@ them.
 | `tag` | `--tag T` | `v2.3.1` | Pinned. `update` resolves the tag to its commit |
 | `tag-pattern` | `--tag-pattern P` | `v2.*` | `update` selects the highest version tag matching the glob |
 | `commit` | `--commit SHA` | `a1b2c3d…` | Pinned to a SHA. `update` only verifies the commit and checks it out |
+
+![The tag pattern dialog of the terminal interface. The pattern of kernel
+changes from v6.6.* to v6.*, and the dialog counts the matching local tags
+while it is typed, including the pre-releases v6.7-rc1 and v6.6.11-rc1.
+After the confirmation, the update picks v6.6.10 and skips the
+pre-releases, and lazysubmodules status shows v6.6.10 as the locked
+tag.](docs/demo/tag-pattern.gif)
 
 ### Resolution rules
 
@@ -350,6 +369,14 @@ lazysubmodules tui
 lazysubmodules version
 ```
 
+![A terminal session with the command line interface: lazysubmodules
+status prints a table of all submodules and their states; status
+--porcelain=v1, laid out with column, shows the header line and the
+tab-separated records; update --dry-run lists the planned changes;
+update --commit updates kernel and u-boot and prints the new commit; git
+log shows the generated commit message with one block per submodule and
+the Signed-off-by line.](docs/demo/cli.gif)
+
 General rules:
 
 - **Help:** `lazysubmodules help [<command>]`, `-h` and `--help` print usage
@@ -450,6 +477,12 @@ Options:
 
 All checks run for every selected submodule before anything is modified.
 If one submodule is refused, nothing changes.
+
+![A refused update: kernel is behind, app has an uncommitted change and
+fresh was never cloned. update kernel app fresh prints both refusals and
+exits with status 3, and status shows that nothing changed, not even
+kernel. After the change in app is discarded, update --fetch clones fresh
+through the mirror and updates kernel.](docs/demo/safety.gif)
 
 `update` prints one line per submodule. The left side is what the
 superproject records (in the index, or in `HEAD` with `--commit`): the
@@ -723,6 +756,11 @@ commit and the submodule HEAD. For `tag` and `tag-pattern` it also checks
 that the locked tag still resolves to the locked commit. It prints every
 failed check and exits with code 4 when any check fails. It works offline.
 
+![A release tag moved upstream: fpga.core follows tag v2.3.1 and is ok.
+The upstream repository moves the tag to another commit. After
+lazysubmodules fetch, status reports drift, and verify names the moved tag
+and exits with status 4.](docs/demo/drift.gif)
+
 | Check | Passes when |
 |---|---|
 | `lock-entry` | `.lsm.lock` has an entry for the submodule |
@@ -955,7 +993,9 @@ Every commit needs a `Signed-off-by` line, which certifies the
 LazySubmodules is free software: you can redistribute it and/or modify it
 under the terms of the GNU General Public License, version 3 only
 (`GPL-3.0-only`), as published by the Free Software Foundation. See
-[LICENSE](LICENSE) for the full text.
+[LICENSE](LICENSE) for the full text. The same license covers the
+documentation and the images in [`docs/`](docs/), such as the demo
+recordings.
 
 The release binaries also contain the Go standard library and Go modules
 under the BSD-3-Clause and MIT licenses. Their notices and license texts
