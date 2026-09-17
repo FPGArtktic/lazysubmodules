@@ -262,31 +262,139 @@ func TestNotWorktree(t *testing.T) {
 	}
 }
 
-func TestParentPID(t *testing.T) {
+func TestReadStat(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	tests := map[string]struct {
 		content string
+		state   byte
 		ppid    int
 		ok      bool
 	}{
-		"plain":     {"42 (git) S 7 42 42 0 -1", 7, true},
-		"odd comm":  {"43 (a) b (c) R 8 43", 8, true},
-		"no comm":   {"44 git S 9", 0, false},
-		"truncated": {"45 (git) S", 0, false},
-		"not a pid": {"46 (git) S x 1", 0, false},
+		"plain":      {"42 (git) S 7 42 42 0 -1", 'S', 7, true},
+		"odd comm":   {"43 (a) b (c) T 8 43", 'T', 8, true},
+		"no comm":    {"44 git S 9", 0, 0, false},
+		"truncated":  {"45 (git) S", 0, 0, false},
+		"not a pid":  {"46 (git) S x 1", 0, 0, false},
+		"long state": {"47 (git) SS 1", 0, 0, false},
 	}
 	for name, tt := range tests {
 		file := filepath.Join(dir, name)
 		if err := os.WriteFile(file, []byte(tt.content), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if ppid, ok := parentPID(file); ppid != tt.ppid || ok != tt.ok {
-			t.Errorf("%s: parentPID = %d, %t; want %d, %t", name, ppid, ok, tt.ppid, tt.ok)
+		state, ppid, ok := readStat(file)
+		if state != tt.state || ppid != tt.ppid || ok != tt.ok {
+			t.Errorf("%s: readStat = %q, %d, %t; want %q, %d, %t", name, state, ppid, ok,
+				tt.state, tt.ppid, tt.ok)
 		}
 	}
-	if _, ok := parentPID(filepath.Join(dir, "missing")); ok {
-		t.Errorf("parentPID(missing) = ok")
+	if _, _, ok := readStat(filepath.Join(dir, "missing")); ok {
+		t.Errorf("readStat(missing) = ok")
+	}
+}
+
+func TestBlockedSignals(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	tests := map[string]struct {
+		content string
+		mask    uint64
+		ok      bool
+	}{
+		"blocked":   {"Name:\tgit\nSigPnd:\t0000000000000000\nSigBlk:\t0000000000004000\n", 0x4000, true},
+		"none":      {"SigBlk:\t0000000000000000\n", 0, true},
+		"last line": {"Name:\tsh\nSigBlk:\tfffffffe7ffbfeff", 0xfffffffe7ffbfeff, true},
+		"missing":   {"Name:\tsh\nShdPnd:\t0000000000004000\n", 0, false},
+		"invalid":   {"SigBlk:\tnot hex\n", 0, false},
+	}
+	for name, tt := range tests {
+		file := filepath.Join(dir, name)
+		if err := os.WriteFile(file, []byte(tt.content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if mask, ok := blockedSignals(file); mask != tt.mask || ok != tt.ok {
+			t.Errorf("%s: blockedSignals = %#x, %t; want %#x, %t", name, mask, ok, tt.mask, tt.ok)
+		}
+	}
+	if _, ok := blockedSignals(filepath.Join(dir, "absent")); ok {
+		t.Errorf("blockedSignals(absent) = ok")
+	}
+}
+
+func TestRunningState(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		state                     byte
+		interruptible, uninterrup bool
+	}{
+		{'R', true, true},
+		{'S', true, true},
+		{'D', false, true},
+		{'T', false, false},
+		{'t', false, false},
+		{'Z', false, false},
+		{'X', false, false},
+		{'I', false, false},
+		{0, false, false},
+	} {
+		if got := runningState(tt.state, false); got != tt.interruptible {
+			t.Errorf("runningState(%q, false) = %t", tt.state, got)
+		}
+		if got := runningState(tt.state, true); got != tt.uninterrup {
+			t.Errorf("runningState(%q, true) = %t", tt.state, got)
+		}
+	}
+}
+
+func TestProcessState(t *testing.T) {
+	t.Parallel()
+	if _, err := os.Stat(filepath.Join(procDir, "self", "status")); err != nil {
+		t.Skipf("no proc file system: %v", err)
+	}
+	cmd := exec.Command("sleep", "30")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	pid := cmd.Process.Pid
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	})
+	if blocks(pid, syscall.SIGTERM) || blocks(pid, 0) || blocks(os.Getpid(), syscall.SIGKILL) {
+		t.Errorf("a signal is blocked")
+	}
+	deadline := time.Now().Add(time.Minute)
+	for state(pid) != 'S' && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if s := state(pid); s != 'S' || !running(pid, true) {
+		t.Errorf("sleeping process: state %q, running %t", s, running(pid, true))
+	}
+	if err := cmd.Process.Signal(syscall.SIGSTOP); err != nil {
+		t.Fatal(err)
+	}
+	waitStopped([]int{pid}, deadline)
+	if s := state(pid); s != 'T' || running(pid, true) {
+		t.Errorf("stopped process: state %q, running %t", s, running(pid, true))
+	}
+	if err := cmd.Process.Signal(syscall.SIGCONT); err != nil {
+		t.Fatal(err)
+	}
+	// The deadline ends the wait for a process that does not stop.
+	start := time.Now()
+	waitStopped([]int{pid}, start.Add(20*time.Millisecond))
+	if elapsed := time.Since(start); elapsed < 20*time.Millisecond || elapsed > 10*time.Second {
+		t.Errorf("waitStopped(running) returned after %v", elapsed)
+	}
+	if err := cmd.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Wait(); err == nil {
+		t.Fatal("sleep was not killed")
+	}
+	if s := state(pid); s != 0 || running(pid, true) {
+		t.Errorf("waited process: state %q, running %t", s, running(pid, true))
 	}
 }
 
@@ -304,7 +412,7 @@ func TestDescendants(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_ = signalTree(cmd.Process.Pid, syscall.SIGKILL)
+		_ = signalTree(cmd.Process, syscall.SIGKILL, freezeTimeout)
 		_ = cmd.Wait()
 	})
 	var found []int
@@ -322,14 +430,6 @@ func TestDescendants(t *testing.T) {
 	}
 	if got := descendants(-1); len(got) != 0 {
 		t.Errorf("descendants(-1) = %v, want none", got)
-	}
-}
-
-func TestSignalTreeMissingProcess(t *testing.T) {
-	t.Parallel()
-	// Linux process IDs never exceed 1<<22; signal 0 only checks existence.
-	if err := signalTree(1<<22+1, 0); !errors.Is(err, syscall.ESRCH) {
-		t.Errorf("signalTree(unused) = %v, want ESRCH", err)
 	}
 }
 

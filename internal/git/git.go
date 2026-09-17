@@ -163,7 +163,7 @@ func (r *Runner) Exec(ctx context.Context, c Cmd) (string, error) {
 		cmd.Stderr = &stderr
 	}
 	cmd.Cancel = func() error {
-		return signalTree(cmd.Process.Pid, syscall.SIGTERM)
+		return signalTree(cmd.Process, syscall.SIGTERM, freezeTimeout)
 	}
 	cmd.WaitDelay = waitDelay
 	if err := cmd.Run(); err != nil {

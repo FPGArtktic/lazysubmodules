@@ -252,6 +252,54 @@ func TestExecCancelSendsSIGTERM(t *testing.T) {
 	}
 }
 
+func TestExecCancelWhileGitStartsProcesses(t *testing.T) {
+	t.Parallel()
+	// "git submodule update" starts a chain of processes, down to the remote
+	// helper "hang", a script that runs sleep. A cancellation that lands
+	// while the chain is being built must end every process of it, and
+	// promptly, since the sleep holds the output pipe of git.
+	f := newFixture(t, gittest.SHA1)
+	bin := t.TempDir()
+	helper := filepath.Join(bin, "git-remote-hang")
+	gittest.WriteFile(t, helper, "#!/bin/sh\nsleep 3600\n")
+	if err := os.Chmod(helper, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Git(t, f.super.Dir, "config", "-f", ".gitmodules", "submodule.lib.url", "hang::x")
+	gittest.Git(t, f.super.Dir, "submodule", "sync", "--quiet")
+	f.super.Deinit(t, f.path)
+	module := filepath.Join(f.super.Dir, ".git", "modules", "lib")
+	for delay := range 11 {
+		marker := newMarker(t)
+		r, err := git.New(git.WithEnv(append(gittest.Env(t), "GIT_ALLOW_PROTOCOL=file:hang",
+			"PATH="+bin+string(filepath.ListSeparator)+os.Getenv("PATH"),
+			markerVar+"="+marker)...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.RemoveAll(module); err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		var progress strings.Builder
+		go func() {
+			done <- r.SubmoduleInit(ctx, f.super.Dir, f.path, false, &progress)
+		}()
+		time.Sleep(time.Duration(2*delay) * time.Millisecond)
+		start := time.Now()
+		cancel()
+		err = <-done
+		if elapsed := time.Since(start); elapsed > 5*time.Second {
+			t.Errorf("delay %d ms: cancellation took %v", 2*delay, elapsed)
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("delay %d ms: SubmoduleInit = %v, want context.Canceled", 2*delay, err)
+		}
+		wantNoProcess(t, marker)
+	}
+}
+
 func TestExecContextCanceledWhileRunning(t *testing.T) {
 	t.Parallel()
 	r := gittest.Runner(t)
