@@ -307,3 +307,135 @@ func TestFind(t *testing.T) {
 		t.Errorf("Find(nil) = %+v, %t; want zero, false", got, ok)
 	}
 }
+
+// commitAll stages every change in dir and commits it.
+func commitAll(t *testing.T, dir, msg string) {
+	t.Helper()
+	gittest.Git(t, dir, "add", "--all")
+	gittest.Git(t, dir, "commit", "--quiet", "--message="+msg)
+}
+
+// setRef replaces lsm-ref of the kernel entry in the .gitmodules file in dir.
+func setRef(t *testing.T, dir, ref string) {
+	t.Helper()
+	gittest.Git(t, dir, "config", "--file", manifest.File, "--replace-all",
+		"submodule.kernel."+manifest.KeyRef, ref)
+}
+
+func TestLoadRev(t *testing.T) {
+	t.Parallel()
+	for _, format := range []string{gittest.SHA1, gittest.SHA256} {
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+			g := gittest.Runner(t)
+			ctx := t.Context()
+			dir := gittest.InitRepo(t, format)
+			gittest.WriteFile(t, filepath.Join(dir, "README"), "x\n")
+			commitAll(t, dir, "initial commit")
+			gittest.WriteFile(t, filepath.Join(dir, manifest.File), sample)
+			commitAll(t, dir, "add manifest")
+			setRef(t, dir, "v6.7.*")
+			gittest.Git(t, dir, "add", manifest.File)
+			setRef(t, dir, "v6.8.*")
+
+			want := map[string][]manifest.Submodule{
+				"HEAD":   sampleSubmodules(),
+				"":       sampleSubmodules(),
+				"HEAD~1": nil,
+			}
+			want[""][0].Ref = "v6.7.*"
+			for rev, subs := range want {
+				got, err := manifest.LoadRev(ctx, g, dir, rev)
+				if err != nil || !slices.Equal(got, subs) {
+					t.Errorf("LoadRev(%q) =\n%+v, %v\nwant\n%+v", rev, got, err, subs)
+				}
+			}
+			if got := load(t, g, dir); got[0].Ref != "v6.8.*" {
+				t.Errorf("Load = %+v, want the working tree copy", got[0])
+			}
+		})
+	}
+}
+
+func TestLoadRevUnborn(t *testing.T) {
+	t.Parallel()
+	g := gittest.Runner(t)
+	ctx := t.Context()
+	dir := gittest.InitRepo(t, gittest.SHA1)
+	got, err := manifest.LoadRev(ctx, g, dir, "")
+	if got != nil || err != nil {
+		t.Errorf("LoadRev(empty index) = %+v, %v; want nil, nil", got, err)
+	}
+	gittest.WriteFile(t, filepath.Join(dir, manifest.File), sample)
+	gittest.Git(t, dir, "add", manifest.File)
+	got, err = manifest.LoadRev(ctx, g, dir, "HEAD")
+	if got != nil || !errors.Is(err, git.ErrRefNotFound) {
+		t.Errorf("LoadRev(unborn HEAD) = %+v, %v; want ErrRefNotFound", got, err)
+	}
+	if got, err := manifest.LoadRev(ctx, g, dir, ""); err != nil ||
+		!slices.Equal(got, sampleSubmodules()) {
+		t.Errorf("LoadRev(index) = %+v, %v", got, err)
+	}
+}
+
+func TestLoadRevErrors(t *testing.T) {
+	t.Parallel()
+	g := gittest.Runner(t)
+	ctx := t.Context()
+	dir := newRepo(t, "[submodule \"bad.one\"]\n\tpath = bad\n\tlsm-mode = bogus\n"+
+		"[submodule \"good\"]\n\tpath = good\n\tlsm-mode = tag\n\tlsm-ref = v1\n"+
+		"[submodule \"worse\"]\n\tpath = worse\n\tlsm-mode = other\n"+
+		"[submodule \"plain\"]\n\tpath = plain\n")
+	commitAll(t, dir, "add manifest")
+	// The recorded files keep the entries with a valid mode, the working
+	// tree copy none.
+	valid := []manifest.Submodule{
+		{Name: "good", Path: "good", Mode: manifest.ModeTag, Ref: "v1"},
+		{Name: "plain", Path: "plain"},
+	}
+	for rev, prefix := range map[string]string{
+		"HEAD": `HEAD:.gitmodules: submodule "bad.one": lsm-mode: `,
+		"":     `:.gitmodules: submodule "bad.one": lsm-mode: `,
+	} {
+		got, err := manifest.LoadRev(ctx, g, dir, rev)
+		if !slices.Equal(got, valid) || !errors.Is(err, manifest.ErrInvalidMode) ||
+			!strings.HasPrefix(err.Error(), prefix) {
+			t.Errorf("LoadRev(%q) = %+v, %v; want %+v and ErrInvalidMode starting with %q",
+				rev, got, err, valid, prefix)
+		}
+	}
+	if got, err := manifest.Load(ctx, g, dir); got != nil || !errors.Is(err, manifest.ErrInvalidMode) {
+		t.Errorf("Load = %+v, %v; want ErrInvalidMode", got, err)
+	}
+	tests := map[string]error{
+		"nope":   git.ErrRefNotFound,
+		"HEAD~1": git.ErrRefNotFound,
+		"-x":     git.ErrInvalidRefName,
+	}
+	for rev, want := range tests {
+		got, err := manifest.LoadRev(ctx, g, dir, rev)
+		if got != nil || !errors.Is(err, want) ||
+			!strings.HasPrefix(err.Error(), "read "+rev+":"+manifest.File+": ") {
+			t.Errorf("LoadRev(%q) = %+v, %v; want %v", rev, got, err, want)
+		}
+	}
+
+	// Git refuses a symbolic link named .gitmodules, but not a directory.
+	other := gittest.InitRepo(t, gittest.SHA1)
+	gittest.WriteFile(t, filepath.Join(other, manifest.File, "x"), sample)
+	commitAll(t, other, "add a directory")
+	for _, rev := range []string{"HEAD", ""} {
+		got, err := manifest.LoadRev(ctx, g, other, rev)
+		if got != nil || !errors.Is(err, git.ErrNotRegularFile) {
+			t.Errorf("LoadRev(%q, directory) = %+v, %v; want ErrNotRegularFile", rev, got, err)
+		}
+	}
+	gittest.WriteFile(t, filepath.Join(other, "bad"), "[unterminated\n")
+	gittest.Git(t, other, "rm", "-r", "--quiet", "--cached", manifest.File)
+	gittest.Git(t, other, "update-index", "--add", "--cacheinfo",
+		"100644,"+gittest.Git(t, other, "hash-object", "-w", "bad")+","+manifest.File)
+	got, err := manifest.LoadRev(ctx, g, other, "")
+	if _, ok := errors.AsType[*git.Error](err); !ok || got != nil {
+		t.Errorf("LoadRev(invalid file) = %+v, %v; want *git.Error", got, err)
+	}
+}

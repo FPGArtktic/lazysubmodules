@@ -97,21 +97,66 @@ func Load(ctx context.Context, g *git.Runner, root string) ([]Submodule, error) 
 	if err != nil {
 		return nil, err
 	}
-	var subs []Submodule
+	subs, err := submodules(File, recs)
+	if err != nil {
+		return nil, err
+	}
+	return subs, nil
+}
+
+// LoadRev reads all submodules from the .gitmodules file recorded in a
+// revision of a superproject, or in its index.
+//
+// The recorded file is parsed as Load parses the working tree copy. Objects
+// missing from a partial clone are not fetched.
+//
+// Context: root is the top level of the superproject; rev names a commit,
+// such as "HEAD", or is empty for the index. A revision or index without the
+// file yields no submodules.
+// Return: the submodules as Load returns them; an error wrapping
+// ErrInvalidMode naming the first submodule with an invalid lsm-mode, along
+// with the other submodules; an error wrapping git.ErrRefNotFound when rev
+// does not exist (for example an unborn HEAD); an error wrapping
+// git.ErrInvalidRefName when rev starts with "-"; an error wrapping
+// git.ErrUnmerged when the index holds conflict stages for the file; or an
+// error as Load returns it, where git.ErrNotRegularFile means that the
+// recorded file is not a regular file.
+func LoadRev(ctx context.Context, g *git.Runner, root, rev string) ([]Submodule, error) {
+	src := rev + ":" + File
+	entries, err := g.ConfigListRev(ctx, root, rev, File)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", src, err)
+	}
+	return submodules(src, group(entries))
+}
+
+// submodules returns the usable records with a valid lsm-mode as
+// submodules, and an error wrapping ErrInvalidMode that names the first
+// record with an invalid one; src names the file they were read from in
+// errors.
+func submodules(src string, recs []record) ([]Submodule, error) {
+	var (
+		subs    []Submodule
+		invalid error
+	)
 	for _, rec := range recs {
 		if !rec.usable() {
 			continue
 		}
 		sub := rec.sub
 		if rec.hasMode {
-			sub.Mode, err = ParseMode(rec.mode)
+			mode, err := ParseMode(rec.mode)
 			if err != nil {
-				return nil, fmt.Errorf("%s: submodule %q: %s: %w", File, sub.Name, KeyMode, err)
+				if invalid == nil {
+					invalid = fmt.Errorf("%s: submodule %q: %s: %w", src, sub.Name, KeyMode, err)
+				}
+				continue
 			}
+			sub.Mode = mode
 		}
 		subs = append(subs, sub)
 	}
-	return subs, nil
+	return subs, invalid
 }
 
 // Find looks up a submodule by name.
@@ -136,12 +181,18 @@ type record struct {
 }
 
 // read lists the variables of the .gitmodules file below root and groups
-// them by submodule, in the order of first appearance.
+// them by submodule.
 func read(ctx context.Context, g *git.Runner, root string) ([]record, error) {
 	entries, err := g.ConfigList(ctx, root, File)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", File, err)
 	}
+	return group(entries), nil
+}
+
+// group groups submodule variables by submodule, in the order of first
+// appearance, and ignores other variables.
+func group(entries []git.ConfigEntry) []record {
 	var recs []record
 	index := make(map[string]int)
 	for _, e := range entries {
@@ -157,7 +208,7 @@ func read(ctx context.Context, g *git.Runner, root string) ([]record, error) {
 		}
 		recs[i].set(variable, e.Value)
 	}
-	return recs, nil
+	return recs
 }
 
 // splitKey splits "submodule.<name>.<variable>" at the first and the last
