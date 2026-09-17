@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/FPGArtktic/lazysubmodules/internal/git"
 	"github.com/FPGArtktic/lazysubmodules/internal/lock"
@@ -197,14 +198,15 @@ func wrapName(name string, err error) error {
 	return fmt.Errorf("%s: %w", displayName(name), err)
 }
 
-// displayName returns a submodule name for messages. Names that are empty
-// or contain quotes, backslashes or characters that are not printable are
-// quoted, so that a crafted .gitmodules cannot inject terminal control
-// sequences.
+// displayName returns a submodule name for messages. Names that are empty,
+// are not valid UTF-8 or contain quotes, backslashes or characters that are
+// not printable are quoted, so that a crafted .gitmodules cannot inject
+// terminal control sequences, such as the 8-bit CSI byte 0x9b.
 func displayName(name string) string {
-	quote := name == "" || strings.ContainsFunc(name, func(c rune) bool {
-		return c == '"' || c == '\\' || !unicode.IsPrint(c)
-	})
+	quote := name == "" || !utf8.ValidString(name) || strings.ContainsFunc(name,
+		func(c rune) bool {
+			return c == '"' || c == '\\' || !unicode.IsPrint(c)
+		})
 	if quote {
 		return strconv.Quote(name)
 	}

@@ -240,6 +240,11 @@ func TestMessageHelpers(t *testing.T) {
 		`a\b`:                        `"a\\b"`,
 		"a\u200bb":                   `"a\u200bb"`,
 		"za\u017c\u00f3\u0142\u0107": "za\u017c\u00f3\u0142\u0107",
+		// Bytes that are not UTF-8, such as the 8-bit CSI, decode to the
+		// printable replacement character.
+		"csi\x9b2Jname": `"csi\x9b2Jname"`,
+		"bad\xffutf":    `"bad\xffutf"`,
+		"\ufffd":        "\ufffd",
 	} {
 		if got := displayName(in); got != want {
 			t.Errorf("displayName(%q) = %s, want %s", in, got, want)
