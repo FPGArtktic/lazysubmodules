@@ -3,10 +3,10 @@
 
 # Contributing to LazySubmodules
 
-Thank you for helping. This guide covers building, testing, code style, commit
-messages and dependencies. The rules are enforced by the same containerized
-tooling on developer machines and in CI, so a change that passes locally
-passes in CI too.
+Thank you for helping. This guide covers building, testing, code style,
+commit messages and dependencies. The rules are enforced by the same
+containerized tooling on developer machines and in CI, so a change that
+passes locally passes in CI too.
 
 By contributing you agree that your work is licensed under the project
 license, `GPL-3.0-only` (see [LICENSE](LICENSE)), and you certify the
@@ -104,14 +104,15 @@ scripts/build-in-container.sh test-compat
 
 How the script behaves:
 
-- **Engine:** `CONTAINER_ENGINE` selects the engine; the default is `podman`,
-  with `docker` as the fallback. Rootless Podman runs with `--userns=keep-id`,
-  so files written to the repository belong to you.
+- **Engine:** `CONTAINER_ENGINE` selects the engine; the default is
+  `podman`, with `docker` as the fallback. Rootless Podman runs with
+  `--userns=keep-id`, so files written to the repository belong to you.
 - **User:** the container user has a passwd entry with the home directory
   `/tmp`, which is also `HOME`. `ssh` and `ssh-keygen` (used by tests and by
   AUR publishing) read the home directory from that entry, so they never
   write into the checkout. Podman gets the entry with `--passwd-entry`;
-  rootful Docker gets a copy of the image's passwd file with the entry added.
+  rootful Docker gets a copy of the image's passwd file with the entry
+  added.
 - **Image:** every target that runs in the build image, and `image` itself,
   builds it only when it is missing. The image tag is derived from the
   `Containerfile` hash, so an edited `Containerfile` is rebuilt
@@ -138,8 +139,8 @@ How the script behaves:
   `image-load` and pull the `golang` image of `test-compat` beforehand.
 - **Network for `package-test`:** `apt` and `dnf` download the `git`
   dependency of the packages from the distribution mirrors.
-- **cgo:** builds use `CGO_ENABLED=0`. The race detector needs cgo, so `test`
-  and `test-compat` enable it; `gcc` comes with the images.
+- **cgo:** builds use `CGO_ENABLED=0`. The race detector needs cgo, so
+  `test` and `test-compat` enable it; `gcc` comes with the images.
 - **Mounts:** the repository is mounted with `:Z` for SELinux hosts. The
   cache volumes are shared by every run and use the shared label `:z`
   instead, because a private label would be applied again, recursively, on
@@ -164,17 +165,17 @@ How the script behaves:
   next to a repository named `src`). `build`, `test` and the other targets
   still work there.
 - **Release:** `release` passes `GITHUB_TOKEN`,
-  `ACTIONS_ID_TOKEN_REQUEST_URL`, `ACTIONS_ID_TOKEN_REQUEST_TOKEN`, `AUR_KEY`
-  and `GITHUB_STEP_SUMMARY` into the container when they are set. GoReleaser
-  reads no other `GITHUB_*` variable. The image pins the SSH host key of
-  `aur.archlinux.org`.
+  `ACTIONS_ID_TOKEN_REQUEST_URL`, `ACTIONS_ID_TOKEN_REQUEST_TOKEN`,
+  `AUR_KEY` and `GITHUB_STEP_SUMMARY` into the container when they are
+  set. GoReleaser reads no other `GITHUB_*` variable. The image pins the
+  SSH host key of `aur.archlinux.org`.
 - **Caches:** Go and linter caches live in the named volumes
   `lazysubmodules-go-build`, `lazysubmodules-go-mod` and
   `lazysubmodules-golangci-lint`. Remove them with `podman volume rm` (or
   `docker volume rm`) to start from scratch.
-- **gitlint range:** `GITLINT_RANGE` is passed to `gitlint --commits`. `A..B`
-  lints the commits after `A` up to `B`, a single ref lints its whole
-  history, and the default is `HEAD`. To lint only your branch:
+- **gitlint range:** `GITLINT_RANGE` is passed to `gitlint --commits`.
+  `A..B` lints the commits after `A` up to `B`, a single ref lints its
+  whole history, and the default is `HEAD`. To lint only your branch:
 
   ```sh
   GITLINT_RANGE=origin/main..HEAD scripts/build-in-container.sh gitlint
@@ -554,7 +555,8 @@ GITLINT_RANGE=origin/main..HEAD scripts/build-in-container.sh gitlint
 - **Required fixtures:** lightweight tag, annotated tag, moved tag
   (force-push), pre-release tag, nested submodule, dirty submodule.
 - **Golden files:** golden files live under `testdata/`. TUI golden output
-  is rendered deterministically, without color.
+  is rendered deterministically, with a fixed color profile and
+  environment. See [Golden files](#golden-files) for how to update them.
 - **Demo:** `TestDemo` in `cmd/lazysubmodules` builds the binary and runs
   `scripts/demo.sh` against it (see
   [Demo and recordings](#demo-and-recordings)). It needs Bash and is
@@ -575,6 +577,28 @@ Every edge case below has a test:
 | SHA-256 repositories | SHA length not hardcoded |
 | Mirrors (`insteadOf`) | Transparent, no special handling |
 | Non-TTY for `tui` | Exit code 2 |
+
+### Golden files
+
+After a deliberate change of the output, rewrite the golden files with
+the `-update` flag of the package's tests, then review the diff:
+
+```sh
+go test ./internal/porcelain -run Golden -update
+go test ./cmd/lazysubmodules -update
+go test ./internal/tui -run TestGolden -update
+```
+
+- **Porcelain:** `internal/porcelain/testdata/` holds the stable v1
+  format (see [Stable interfaces](#stable-interfaces)). A golden file there
+  changes only together with the fixture it describes, never with the
+  format.
+- **Command line:** `cmd/lazysubmodules/testdata/` holds the help text,
+  the status table and a copy of the porcelain output of the complex
+  superproject, `status-complex-sha1.golden`, which must stay identical to
+  `internal/porcelain/testdata/complex-sha1.golden`.
+- **TUI:** `internal/tui/testdata/` holds the screens, with the escape
+  sequences of the pinned color profile.
 
 ## Demo and recordings
 

@@ -169,8 +169,8 @@ tag.](docs/demo/tag-pattern.gif)
 ### Resolution rules
 
 - **Local only.** Resolution uses refs that already exist locally, so run
-  `lazysubmodules fetch` or `update --fetch` first. Refs are looked up in the
-  submodule's working tree or, when it is not checked out, in its Git
+  `lazysubmodules fetch` or `update --fetch` first. Refs are looked up in
+  the submodule's working tree or, when it is not checked out, in its Git
   directory under `.git/modules/`.
 - **Branch:** resolves `refs/remotes/origin/<branch>` in the submodule. The
   remote is always `origin`.
@@ -185,10 +185,10 @@ tag.](docs/demo/tag-pattern.gif)
 
   so `v1.10.0` sorts above `v1.9.0` and `v1.0.0-rc.1` sorts below `v1.0.0`.
   The highest candidate wins.
-- **Pre-release tags** are excluded from `tag-pattern` unless `update` is
-  given `--include-prerelease`. A tag counts as a pre-release when a `-`
-  follows its first digit: `v1.0.0-rc.1` and `v6.6-rc3` are pre-releases,
-  `release-2.1` is not.
+- **Pre-release tags** are excluded from `tag-pattern` unless `update` or
+  `add` is given `--include-prerelease`. A tag counts as a pre-release when
+  a `-` follows its first digit: `v1.0.0-rc.1` and `v6.6-rc3` are
+  pre-releases, `release-2.1` is not.
 - **Never downgrade:** in `tag-pattern` mode, the tag recorded in
   `.lsm.lock` stays a candidate as long as it still exists locally and
   matches the pattern, even when it is a pre-release. For example, after an
@@ -386,7 +386,11 @@ go install github.com/FPGArtktic/lazysubmodules/cmd/lazysubmodules@latest
 ```
 
 The binary is installed to `$(go env GOPATH)/bin`, or to `GOBIN` when it is
-set.
+set. Such a binary reports the module version with its leading `v`, but
+neither the commit nor the commit date: `version` prints `commit: none` and
+`date: unknown` (see [`version`](#version)). It also comes without the
+third-party license notices; `go version -m` lists the modules it
+contains.
 
 ## Command reference
 
@@ -413,23 +417,29 @@ the Signed-off-by line.](docs/demo/cli.gif)
 General rules:
 
 - **Help:** `lazysubmodules help [<command>]`, `-h` and `--help` print usage
-  (exit code 0).
+  (exit code 0). Without a command, the usage goes to standard error
+  (exit code 2).
 - **Flags:** flags may appear before or after the submodule names, and `--`
   ends the flags. `add` and `set` take exactly one of `--branch`, `--tag`,
   `--tag-pattern` and `--commit`.
-- **Usage errors:** an unknown command or flag, or a missing or extra
-  argument, exits with code 2.
+- **Usage errors:** an unknown command or flag, a flag value that is not
+  accepted, a missing or extra argument, and an invalid ref, pattern, path
+  or URL exit with code 2.
 - **Names:** `<name>` is the submodule name from `.gitmodules`. Without
   names, a command works on all managed submodules (`status` lists all
   submodules, including unmanaged ones). Naming an unknown submodule is an
-  error. Naming an unmanaged submodule is refused (exit code 3) by every
-  command except `status` and `set`.
+  error (exit code 1). Naming an unmanaged submodule is refused (exit code
+  3) by every command except `status` and `set`.
 - **Output:** submodules are processed and reported in `.gitmodules` order.
+  Names and refs with unusual characters are shown quoted, so that they
+  cannot send control sequences to the terminal.
+- **Progress:** the output of `git` itself, such as clone and fetch
+  progress, goes to standard error.
 
 ### `add`
 
 ```sh
-lazysubmodules add <url> <path> (--branch B | --tag T | --tag-pattern P | --commit SHA)
+lazysubmodules add <url> <path> (--branch B | --tag T | --tag-pattern P | --commit SHA) [--include-prerelease]
 ```
 
 Adds a new managed submodule:
@@ -441,9 +451,16 @@ Adds a new managed submodule:
 4. Stages `.gitmodules`, `.lsm.lock` and the new gitlink. It does not
    commit.
 
-`<path>` must be a relative path inside the superproject that is not
-already a submodule. If a step after the clone fails, the new submodule is
-removed again and the original error is reported.
+It prints one line, for example `u-boot: added at main (8e9fc7a)`.
+
+- **`--include-prerelease`:** lets a `--tag-pattern` select a pre-release
+  tag, as for `update`.
+- **Path:** `<path>` must be a relative path inside the superproject. A
+  path outside it is a usage error (exit code 2). A path that already
+  exists, belongs to another submodule, lies inside a submodule, or leads
+  through a file or a symbolic link is refused (exit code 3).
+- **Rollback:** if a step after the clone fails, the new submodule is
+  removed again and the original error is reported.
 
 ### `set`
 
@@ -461,6 +478,7 @@ lazysubmodules set <name> (--branch B | --tag T | --tag-pattern P | --commit SHA
   `git check-ref-format`.
 - **Commit mode:** an abbreviated SHA is expanded when the commit is
   available locally; otherwise a full SHA is required.
+- **Output:** one line, for example `kernel: tracks tag-pattern v6.*`.
 
 ### `update`
 
@@ -493,7 +511,8 @@ Options:
   happens offline. When a clone is needed, `update` refuses unless
   `--fetch` is given.
 - **Dry run:** `--dry-run` resolves against the refs that exist locally. A
-  submodule that would need a clone is listed without a target.
+  submodule that would need a clone is listed with the target
+  `unknown until fetched`.
 - **Native key:** `update` also rewrites the native `branch` key in
   `.gitmodules` to match the tracking mode.
 
@@ -505,11 +524,18 @@ Options:
 - the resolved ref does not exist locally (`fetch` first, or use `--fetch`);
 - a submodule is not initialized, its Git directory is missing and
   `--fetch` was not given;
-- `--commit` is given and the index already contains unrelated changes;
-- an unmanaged submodule is named explicitly.
+- `--commit` is given and the commit would include unrelated changes, or
+  the index has unresolved merge conflicts (see
+  [`update --commit`](#update---commit));
+- an unmanaged submodule is named explicitly;
+- a submodule cannot be updated safely: its path leads through a symbolic
+  link, the index records no submodule at its path, or it would be
+  initialized but has no usable URL or something other than a Git
+  repository in the place of its Git directory.
 
-All checks run for every selected submodule before anything is modified.
-If one submodule is refused, nothing changes.
+All checks run for every selected submodule before anything is modified,
+and every refusal is reported, one per line. If one submodule is refused,
+nothing changes.
 
 ![A refused update: kernel is behind, app has an uncommitted change and
 fresh was never cloned. update kernel app fresh prints both refusals and
@@ -632,11 +658,16 @@ separates the sign-off with a blank line.
 Details:
 
 - **SHAs:** commits are shown with 12 characters.
+- **Tracking mode:** the configuration after the update. A previous
+  configuration is not listed.
+- **Old commit:** the commit that `HEAD` of the superproject recorded,
+  with the ref of the previous lock entry when that entry records the same
+  commit, and without a ref otherwise. Without a previous lock entry, the
+  line reads `Old: <sha> (unlocked)`. `Old: none` means that the
+  superproject recorded no gitlink for the submodule in `HEAD`, for
+  example for a submodule that was added but not committed yet.
 - **Commit mode:** the subject shows the 12-character SHA, and the
   parenthesized ref is omitted.
-- **No previous lock entry:** the old line reads
-  `Old: <sha> (unlocked)`, or `Old: none` when the submodule was not checked
-  out either.
 - **Long subjects:** a subject longer than 75 characters, or one that
   would break another subject rule (trailing punctuation or white space,
   the word "WIP" in any case), is shortened to `manifest: update <name>`,
@@ -670,12 +701,13 @@ Details:
 | All other commands | **No** |
 
 - **Dry run:** `update --dry-run --fetch` does not use the network either.
-- **TUI:** in the TUI, `f` (fetch) is the only network action.
+- **TUI:** in the TUI, `f` (fetch) is the only network action; its `u` and
+  `U` never fetch.
 - **Mirrors** configured with `url.<base>.insteadOf` work transparently,
   because all network access goes through `git`.
 - **Credentials:** they come from Git's credential helpers. The TUI cannot
-  answer interactive credential prompts, so fetches from the TUI need a
-  credential helper or an SSH agent.
+  answer interactive prompts (see [Git without a
+  terminal](#git-without-a-terminal)).
 - **`foreach`:** the command itself does not use the network, but the
   commands you run with it may.
 
@@ -700,12 +732,24 @@ lazysubmodules status [<name>...] [--porcelain=v1]
 ```
 
 Without `--porcelain`, `status` prints a table with the columns `NAME`,
-`PATH`, `MODE`, `REF`, `LOCK`, `HEAD` and `STATE`, with abbreviated SHAs.
-States are colored only when standard output is a terminal, `NO_COLOR` is
-unset or empty, and `TERM` is not `dumb`.
+`PATH`, `MODE`, `REF`, `LOCK`, `HEAD` and `STATE`:
 
-`status` works offline: for `branch` mode, `behind` compares against the
-remote-tracking branch as of the last fetch.
+```text
+NAME        PATH               MODE         REF      LOCK                   HEAD     STATE
+kernel      kernel             tag-pattern  v6.6.*   8106f61 (v6.6.9)       8106f61  behind
+legacy      vendor/legacy      -            -        -                      2f54e11  unmanaged
+theme       docs/theme         tag          v1.0.0   05f49f3                -        uninitialized
+sdk         sdk                tag-pattern  v*       6308203 (v3.0.0-rc.2)  6308203  ok
+```
+
+- **Cells:** SHAs are abbreviated to 7 characters. `LOCK` adds the locked
+  ref in parentheses when it differs from `REF`, as for tag patterns. An
+  empty cell shows `-`.
+- **Colors:** the header and the states are colored only when standard
+  output is a terminal, `NO_COLOR` is unset or empty, and `TERM` is not
+  `dumb`.
+- **Offline:** `status` uses local refs only. For `branch` mode, `behind`
+  compares against the remote-tracking branch as of the last fetch.
 
 | State | Meaning |
 |---|---|
@@ -734,15 +778,19 @@ The first matching state wins, in this order:
 #### `status --porcelain=v1`
 
 The porcelain v1 format is a stable contract for scripts. Incompatible
-changes will only come as a new `v2` format. Any `--porcelain` value other
-than `v1` is a usage error (exit code 2).
+changes will only come as a new `v2` format.
 
+- **Option:** `--porcelain` alone means `--porcelain=v1`. The value must be
+  attached with `=`: in `status --porcelain v1`, `v1` is a submodule name.
+  Any other value, such as `--porcelain=v2`, is a usage error (exit code
+  2).
 - **Header:** the first line is `# lsm-porcelain v1`.
-- **Records:** then one line per submodule, with eight fields separated by
-  a single TAB. Lines end with LF, there is no trailing TAB, and there are
-  no colors.
-- **Empty fields:** a field without a value is empty, for example the mode
-  and refs of an unmanaged submodule, or the HEAD of an uninitialized one.
+- **Records:** then one line per submodule, in `.gitmodules` order, with
+  eight fields separated by a single TAB. Lines end with LF, there is no
+  trailing TAB, and there are no colors.
+- **Empty fields:** a field without a value is empty: fields 3 to 6 of an
+  unmanaged submodule, fields 5 and 6 without a lock entry, and field 7
+  when the submodule is not checked out.
 
 | # | Field | Example |
 |---|---|---|
@@ -756,10 +804,22 @@ than `v1` is a usage error (exit code 2).
 | 8 | state | `ok`, `behind`, `drift`, `dirty`, `uninitialized`, `missing-ref`, `unmanaged` |
 
 **Quoting.** A field that contains a TAB, LF, CR, double quote (`"`),
-backslash (`\`) or any other control character is written in double quotes
-with C-style escapes, the way Git quotes unusual path names (for example
-`"a\tb"`). All other fields are written as they are. A field that starts
-with `"` is therefore always quoted.
+backslash (`\`), any other control character (U+0000 to U+001F and
+U+007F to U+009F), the line or paragraph separator (U+2028, U+2029), or a
+byte that is not valid UTF-8 is written in double quotes with C-style
+escapes, the way Git quotes unusual path names (`core.quotePath`):
+
+- `\a`, `\b`, `\t`, `\n`, `\v`, `\f`, `\r`, `\"` and `\\`;
+- a three-digit octal escape for each byte of any other character to
+  escape, for example `\033` for ESC, `\342\200\250` for U+2028 and
+  `\377` for an invalid byte.
+
+All other characters, including spaces and non-ASCII letters, are written
+unchanged, also inside quotes, and a field without a character to escape
+is written as it is. A field that starts with `"` is therefore always
+quoted, and the output is always valid UTF-8. For example, a submodule
+named `we"ird` followed by U+2028 and a TAB is listed as
+`"we\"ird\342\200\250\t"`.
 
 Example (fields separated by TABs):
 
@@ -769,13 +829,34 @@ kernel	kernel	tag-pattern	v6.6.*	v6.6.8	a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0
 u-boot	u-boot	branch	main	main	d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3	d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3	behind
 fpga-ip	ip/fpga	tag-pattern	v2.*	v2.1.0	0718ab2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a	9c8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b	drift
 theme	docs/theme	tag	v1.4.0	v1.4.0	5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b		uninitialized
+legacy	vendor/legacy					2f54e11fe5a9c2cf222f3d113338e7e53ddc3620	unmanaged
 ```
 
-To list every submodule that is not `ok`:
+**Parsing.** A script that reads the format should:
+
+1. Check that the first line is exactly `# lsm-porcelain v1`.
+2. Split the rest into lines at LF. No field contains a raw LF, CR or
+   other character at which common functions split lines.
+3. Split each line at every TAB into exactly eight fields, keeping empty
+   fields. Do not use a splitter that merges adjacent TABs: Bash `read`
+   with `IFS=$'\t'` treats TAB as white space and drops empty fields.
+   `awk -F '\t'`, `cut -f` and the `split` function of most languages keep
+   them.
+4. Decode a field that starts with `"`: remove the quotes and resolve the
+   escapes, which gives bytes that are not necessarily valid UTF-8. Go's
+   `strconv.Unquote` does this, and so does
+   `codecs.escape_decode(field[1:-1].encode())[0]` in Python. Use other
+   fields as they are.
+5. Expect full SHAs of 40 or 64 hex digits in fields 6 and 7.
+
+To list every submodule that is neither `ok` nor `unmanaged`:
 
 ```sh
 lazysubmodules status --porcelain=v1 |
-	awk -F '\t' 'NR > 1 && $8 != "ok" { print $1 ": " $8 }'
+	awk -F '\t' '
+		NR == 1 { if ($0 != "# lsm-porcelain v1") exit 1; next }
+		$8 != "ok" && $8 != "unmanaged" { print $1 ": " $8 }
+	'
 ```
 
 ### `verify`
@@ -786,8 +867,8 @@ lazysubmodules verify [<name>...] [--signatures]
 
 `verify` compares the lock commit, the gitlink in the superproject's `HEAD`
 commit and the submodule HEAD. For `tag` and `tag-pattern` it also checks
-that the locked tag still resolves to the locked commit. It prints every
-failed check and exits with code 4 when any check fails. It works offline.
+that the locked tag still resolves to the locked commit. It works offline
+and exits with code 4 when any check fails.
 
 ![A release tag moved upstream: fpga.core follows tag v2.3.1 and is ok.
 The upstream repository moves the tag to another commit. After
@@ -804,6 +885,18 @@ and exits with status 4.](docs/demo/drift.gif)
 | `head` | The submodule HEAD equals the locked commit |
 | `tag` | `tag` and `tag-pattern` only: the locked tag still resolves to the locked commit |
 | `signature` | Only with `--signatures`: see below |
+
+It prints a summary line per submodule, followed by each failed check, and
+names the failed submodules on standard error:
+
+```text
+kernel: ok (7 checks)
+theme: failed (1 of 5 checks)
+  initialized: submodule is not checked out
+broken: failed (1 of 7 checks)
+  lock-config: lock records tag v1.0.0, configuration has v9.9.9
+lazysubmodules: verification failed: theme, broken
+```
 
 - **Committed state:** the `gitlink` check reads the committed state of the
   superproject. An update that is staged but not yet committed therefore
@@ -824,8 +917,9 @@ lazysubmodules foreach -- <command> [args...]
   Uninitialized submodules are skipped with a note on standard error.
 - **No shell:** the command is executed directly. Use `sh -c` when you need
   one.
+- **`--`:** may be left out when the command does not start with `-`.
 - **Failure:** `foreach` stops at the first command that fails and exits
-  with a non-zero code.
+  with code 1, naming the submodule.
 
 The command gets these environment variables in addition to the inherited
 environment:
@@ -847,9 +941,18 @@ lazysubmodules foreach -- sh -c 'echo "$name: $LSM_MODE $LSM_REF at $sha1"'
 
 ### `tui`
 
-`tui` starts the [terminal user interface](#terminal-user-interface). If
-standard input or output is not a terminal, it exits with code 2 and the
-message `lazysubmodules: tui requires a terminal`.
+`tui` starts the [terminal user interface](#terminal-user-interface). It
+needs a terminal that can move the cursor. Otherwise it exits with code 2
+and one of these messages:
+
+| Situation | Message |
+|---|---|
+| Standard input or output is not a terminal | `lazysubmodules: tui requires a terminal` |
+| `TERM` is not set | `lazysubmodules: tui requires a terminal (TERM is not set)` |
+| `TERM` is `dumb` | `lazysubmodules: tui requires a terminal with cursor movement (TERM is dumb)` |
+
+Git runs without access to the terminal while the TUI is shown; see
+[Git without a terminal](#git-without-a-terminal).
 
 ### `version`
 
@@ -863,63 +966,123 @@ commit: <commit SHA>
 date: <commit date, such as 2026-09-17T11:14:07Z>
 ```
 
-Binaries built with `go install` take this information from the Go build
-information.
+Where the information comes from depends on how the binary was built:
+
+| Build | Output |
+|---|---|
+| Release archives and packages | The version without `v`, the commit and the commit date, set at build time |
+| AUR package `lazysubmodules-git` | The package version, such as `0.1.0.r3.g1234abc`, the commit and the commit date |
+| `go install …@v1.2.3` or `@latest` | The module version with `v` (`lazysubmodules v1.2.3`), `commit: none` and `date: unknown`: Go records no commit for a downloaded module |
+| `go build` or `go install` in a Git checkout | The version that Go derives from Git: the tag at the checked-out commit, such as `v0.1.0`, or else a pseudo-version, such as `v0.0.0-20260917111407-3cf609fddb33` before the first tag or `v0.1.1-0.20260917111407-3cf609fddb33` after `v0.1.0`; with `+dirty` for uncommitted changes. Then the commit and the commit date that Go records |
+| `go build` without Git information | `lazysubmodules dev`, `commit: none` and `date: unknown` |
+
+### Interrupting a command
+
+- **Signals:** `SIGINT` (Ctrl+C), `SIGTERM` and `SIGHUP` (sent when the
+  terminal is closed) cancel the running command, and the `git` processes
+  it started are terminated.
+- **Rollback:** an interrupted `update` puts back what it changed before
+  staging: submodules it already checked out return to their previous
+  commit, and nothing is staged. Once the result is staged, only the
+  commit remains; when `git commit` is interrupted or fails, for example
+  in a hook, the update stays staged and no commit is made.
+- **Exit code:** the command prints the error and exits with its code,
+  usually 5, because a `git` command was killed.
+- **Second signal:** a second signal ends LazySubmodules at once, without
+  waiting for the clean-up.
+- **Ignored signals:** `SIGINT` and `SIGHUP` stay ignored when they are
+  ignored at start, as under `nohup` or for background jobs of a
+  non-interactive shell.
+- **TUI:** there, Ctrl+C is a key; see
+  [Leaving the interface](#leaving-the-interface).
 
 ### Exit codes
 
 | Code | Meaning | Examples |
 |---|---|---|
 | 0 | Success | |
-| 1 | Generic error | Unknown submodule name, unreadable configuration |
-| 2 | Usage error | Unknown flag, conflicting tracking options, `tui` without a terminal |
-| 3 | Refused (unsafe state) | Dirty submodule, missing ref, unrelated staged changes |
+| 1 | Generic error | Unknown submodule name, invalid configuration values (such as an unknown `lsm-mode` or a malformed lock entry), a symbolic link in place of `.lsm.lock`, a failing `foreach` command |
+| 2 | Usage error | Unknown flag, conflicting tracking options, invalid ref or path, `tui` without a usable terminal |
+| 3 | Refused (unsafe state) | Dirty submodule, missing ref, unrelated changes for `--commit`, existing path for `add` |
 | 4 | Verification failed | Moved tag, lock and gitlink disagree, bad signature |
-| 5 | Git command failed | A `git` invocation exited with an error |
+| 5 | Git command failed | A `git` invocation exited with an error or was interrupted, including a `.gitmodules` or `.lsm.lock` that Git cannot read or parse |
 
-Errors are printed to standard error as `lazysubmodules: <message>`.
+Errors are printed to standard error as `lazysubmodules: <message>`, with
+one prefix per line when several errors are reported.
 
 ## Terminal user interface
 
 ```text
-┌ Submodules ─────────────────────────────────────┬ Preview ───────────┐
-│ NAME     MODE        REF     LOCK     STATE     │ git log --oneline  │
-│ kernel   tag         v6.6.8  a1b2c3d  ok        │ tag list           │
-│ u-boot   branch      main    d4e5f6a  behind    │ lock vs HEAD diff  │
-│ fpga-ip  tag-pattern v2.*    0718ab2  drift     │                    │
-└─────────────────────────────────────────────────┴────────────────────┘
+┌ Submodules ─────────────────────────────────────────┬ Preview ───────────────┐
+│ NAME       MODE        REF     LOCK    STATE        │ kernel behind          │
+│ kernel     tag-pattern v6.6.*  a1b2c3d behind       │ update would select    │
+│ u-boot     branch      main    d4e5f6a behind       │ tag-pattern v6.6.9     │
+│ fpga-ip    tag         v2.3.1  0718ab2 drift        │ instead of tag-pattern │
+│ crypto lib commit      3f2a1b0 3f2a1b0 ok           │ v6.6.8                 │
+│ legacy     -           -       -       unmanaged    │ HEAD   a1b2c3d         │
+│ theme      tag         v1.0.0  5e5e000 uninitialized│ Lock   v6.6.8 a1b2c3d  │
+│                                                     │ Target v6.6.9 e4f5a6b  │
+│                                                     │                        │
+│                                                     │ Update adds (1)        │
+│                                                     │   e4f5a6b Linux v6.6.9 │
+│                                                     │                        │
+└─────────────────────────────────────────────────────┴────────────────────────┘
+ 6 submodules, 4 not ok
  u update  b branch  t tag  p pattern  f fetch  v verify  ? help  q quit
 ```
 
-The table lists the submodules. The preview panel shows the recent log,
-the tags, and the difference between the lock and HEAD of the selected
-submodule, using local refs only. The preview is hidden in terminals
-narrower than 80 columns.
+- **Table:** the submodules with their mode, configured ref, locked commit
+  and state. In narrow terminals the `LOCK` column is dropped first, then
+  `MODE`.
+- **Preview:** for the selected submodule, why it is in its state, its
+  HEAD, lock and update target, the commits an update would add
+  (`Update adds`), the difference between the lock and HEAD, the recent
+  log and the tags. It uses local refs only and is hidden in terminals
+  narrower than 80 columns.
+- **Bars:** the status bar shows the result of the last action and errors;
+  the key bar shows the main keys, and more of them in wide terminals.
 
 | Key | Action |
 |---|---|
 | `↑` `↓` / `k` `j` | Navigate |
-| `Enter` | Submodule details (`Esc` or `q` to go back) |
-| `u` | Update selected submodule (stage) |
-| `U` | Update selected submodule with commit |
-| `b` / `t` / `p` | Change tracking mode: pick a branch, pick a tag, or enter a tag pattern |
-| `f` | Fetch the selected submodule (the only network action) |
+| `PgUp` `PgDn`, `g` `G` (`Home` `End`) | Page up and down, first and last submodule |
+| `Enter` | Submodule details |
+| `u` | Update the selected submodule (stage) |
+| `U` | Update the selected submodule and commit |
+| `b` / `t` / `p` | Change the tracking: pick a branch, pick a tag, or enter a tag pattern |
+| `f` | Fetch the selected submodule, cloning it if needed (the only network action) |
 | `v` | Verify the selected submodule |
 | `d` | Show the gitlink diff in the superproject |
 | `r` | Reload |
 | `?` | Help |
-| `q` / `Ctrl+C` | Quit (`q` closes an open overlay first) |
+| `q` | Quit, or close the open dialog |
+| `Ctrl+C` | Quit at once |
 
-- **Confirmation:** actions that modify the superproject ask for
-  confirmation first. The question for `u` and `U` also says when the
-  update changes nothing that the index (`u`) or `HEAD` (`U`) records, so
-  that nothing is staged or committed: when it only initializes the
-  submodule, checks out the recorded commit, or rewrites the working tree
-  copy of `.gitmodules` or `.lsm.lock` to what is recorded. With `U`, it
-  also says when a change staged for the submodule is discarded, as
-  [`update --commit`](#update---commit) does. `b`, `t` and `p` change only
-  the tracking configuration, like `lazysubmodules set`; press `u` or `U`
-  afterwards to update.
+In dialogs:
+
+| Where | Keys |
+|---|---|
+| Question | `y` confirms; `n`, `Esc` or `q` cancels |
+| Branch or tag list | `↑` `↓` move, `/` filters, `Enter` chooses, `Esc` or `q` closes. While filtering, `Esc` clears the filter |
+| Pattern dialog | Type the pattern, `Enter` submits it, `Esc` closes |
+| Details, diff, verify result, help | `↑` `↓`, `PgUp` `PgDn` and `g` `G` scroll, `Esc` or `q` closes |
+
+- **Confirmation:** actions that modify the superproject ask first.
+  - `u` and `U` first run a dry run of the update and show its result, as
+    `update --dry-run` would, for example
+    `Update kernel: v6.6.9 (8106f61) -> v6.6.10 (08dcd0d)`, then ask
+    whether to stage or to commit it (`git commit -s`). `y` works only
+    once the result is shown.
+  - A refusal (such as uncommitted changes) or `already up to date` is
+    shown in the status bar at once, without a question.
+  - The question also says when the update changes nothing that the
+    index (`u`) or `HEAD` (`U`) records, so that nothing is staged or
+    committed: when it only initializes the submodule, checks out the
+    recorded commit, or rewrites the working tree copy of `.gitmodules`
+    or `.lsm.lock` to what is recorded. With `U`, it also says when a
+    change staged for the submodule is discarded, as
+    [`update --commit`](#update---commit) does, and when the update is
+    staged already.
 - **Outcome:** the status bar says what happened, for example
   `kernel: updated to v6.6.10 (08dcd0d), staged`,
   `theme: initialized at v1.0.0 (05f49f3)`, or
@@ -927,18 +1090,68 @@ narrower than 80 columns.
   `staged change discarded` when `U` discarded a staged change, and ends
   with `staged`, `committed <commit>` or `nothing to commit` only when
   that applies.
-- **Pattern entry:** `p` shows how many local tags match the pattern while
-  you type.
+- **Tracking changes:** `b`, `t` and `p` change only the tracking
+  configuration, like `lazysubmodules set`, after a confirmation; press
+  `u` or `U` afterwards to update.
+- **Pattern entry:** `p` counts the local tags that match the pattern while
+  you type and lists the highest of them, including how many are
+  pre-releases. An invalid pattern cannot be submitted.
+- **No fetching in updates:** `u` and `U` never fetch. A submodule that
+  needs a clone is refused with a hint to press `f` first.
 - **Background work:** long-running operations run in the background with a
   spinner, so the interface never blocks. Only one modifying operation runs
-  at a time.
-- **Errors** are shown in the status bar; the TUI does not exit on errors.
-- **Colors** respect [`NO_COLOR`](https://no-color.org/).
+  at a time; other modifying keys are ignored with a note meanwhile.
+- **Errors** are shown in the status bar, and in a dialog when they are
+  too long for it; the TUI does not exit on errors.
+- **Colors** respect [`NO_COLOR`](https://no-color.org/): any non-empty
+  value turns them off. Bold text and reverse video, which mark headings
+  and the selection, remain.
+
+### Leaving the interface
+
+- **`q`** quits from the table. In a dialog, the details or the help, it
+  closes that first. In text fields (the pattern dialog and the filter of a
+  list), `q` is typed as text; `Esc` leaves them.
+- **While an operation runs,** `q` asks before quitting, because quitting
+  interrupts the operation.
+- **Ctrl+C** quits at once, from anywhere, and interrupts a running
+  operation, which puts back what it changed, as described in
+  [Interrupting a command](#interrupting-a-command).
+- **Late results:** `lazysubmodules tui` waits for an interrupted
+  operation to finish and prints its outcome after the screen closed. A
+  failure is reported as an error, and the exit code is that of the
+  failure, for example 5 for an interrupted update.
+- **Signals:** `SIGINT`, `SIGTERM` and `SIGHUP` sent to the process end
+  the interface the same way. The error names the signal, for example
+  `lazysubmodules: terminal interface: terminated signal received`, and
+  the exit code is 1 unless an interrupted operation failed.
+
+### Git without a terminal
+
+While the interface is shown, Git runs in a session of its own, without
+access to the terminal, and with `GIT_TERMINAL_PROMPT=0`. It cannot ask
+anything there, so a prompt fails instead of drawing over the screen. For
+fetching and cloning with `f`, and for the hooks that run during `u` and
+`U`:
+
+- **Credentials** must come from a credential helper that does not prompt
+  in the terminal, or from an SSH agent or a key without a passphrase.
+- **SSH host keys** must already be known; an unknown host fails with
+  `Host key verification failed`.
+- **Hooks** must not read from the terminal.
+- **Graphical prompts** still work: an `SSH_ASKPASS` or `GIT_ASKPASS`
+  program, or a graphical pinentry.
+
+With `commit.gpgSign` set, a terminal pinentry such as `pinentry-curses`
+finds the terminal through `GPG_TTY` and can still draw over the
+interface; use a graphical pinentry or a cached passphrase, or commit with
+`lazysubmodules update --commit`.
 
 ## Verifying releases
 
-Release checksums are signed with [cosign](https://github.com/sigstore/cosign)
-keyless signing from the release workflow. Each release has
+Release checksums are signed with
+[cosign](https://github.com/sigstore/cosign) keyless signing from the
+release workflow. Each release has
 `checksums.txt` (SHA-256) for all archives, packages and SBOMs, its
 signature `checksums.txt.sig`, the signing certificate `checksums.txt.pem`,
 and the same signature as a Sigstore bundle, `checksums.txt.sigstore.json`.
@@ -1013,6 +1226,8 @@ collects them (see
 - **Local resolution.** `status`, `verify` and `update` without `--fetch`
   see only what was fetched before.
 - **Git 2.39 or later** is required.
+- **No prompts in the TUI.** Git cannot ask for credentials or host keys
+  there (see [Git without a terminal](#git-without-a-terminal)).
 
 ## Contributing
 
