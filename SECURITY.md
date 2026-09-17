@@ -18,11 +18,10 @@ release. Older releases do not get fixes; upgrade to the latest one.
 `lazysubmodules version` prints the version, the source commit and the
 commit date of a binary.
 
-The AUR package `lazysubmodules-git` is planned but not published yet.
-Until the
-[README](https://github.com/FPGArtktic/lazysubmodules#arch-linux-aur)
-links to it, a package of that name in the AUR does not come from this
-project and is not supported here.
+The AUR package
+[`lazysubmodules-git`](https://aur.archlinux.org/packages/lazysubmodules-git)
+is maintained by this project. It builds from `main`, so it carries a fix
+as soon as it is pushed.
 
 ## Reporting a vulnerability
 
