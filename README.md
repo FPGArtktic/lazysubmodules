@@ -341,8 +341,40 @@ Fedora, runs them and checks the installed license notices.
 
 An AUR package, `lazysubmodules-git`, is planned but not published yet.
 Until this section links to it, a package of that name in the AUR does not
-come from this project. Meanwhile, use a
-[release archive](#release-archives) or [Go](#go).
+come from this project.
+
+Its recipe is in this repository,
+[`packaging/aur/lazysubmodules-git/PKGBUILD`](packaging/aur/lazysubmodules-git/PKGBUILD),
+so you can already build and install the package locally with `makepkg`
+(from the `base-devel` group):
+
+```sh
+git clone https://github.com/FPGArtktic/lazysubmodules.git
+cd lazysubmodules/packaging/aur/lazysubmodules-git
+makepkg -si
+```
+
+- **Source:** the recipe clones the default branch of the GitHub
+  repository; it does not build your local checkout. It builds with the
+  vendored Go modules, downloads none, and runs the test suite.
+- **Dependencies:** `-s` installs the build dependencies (`go`,
+  `go-licenses`, and `openssh` for the tests) with pacman, and `-i`
+  installs the package.
+- **Contents:** `/usr/bin/lazysubmodules`, the short name `/usr/bin/lsm`,
+  the README under `/usr/share/doc/lazysubmodules-git/`, and `LICENSE`,
+  `THIRD_PARTY_NOTICES` and `licenses/` under
+  `/usr/share/licenses/lazysubmodules-git/`. The recipe builds no
+  `lazysubmodules-git-debug` package, whatever `makepkg.conf` says: it
+  builds with `-trimpath`, so the binary contains no paths of the build
+  directory, and without those paths a debug package could not carry
+  the sources.
+- **Version:** derived from the Git history, for example
+  `0.1.0.r3.g1234abc` for the third commit after `v0.1.0`, or
+  `r54.3cf609f` before the first release. `lazysubmodules version` prints
+  it, with the commit and the commit date.
+
+Meanwhile, you can also use a [release archive](#release-archives) or
+[Go](#go).
 
 ### Go
 

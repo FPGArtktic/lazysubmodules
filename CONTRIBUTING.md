@@ -25,6 +25,7 @@ license, `GPL-3.0-only` (see [LICENSE](LICENSE)), and you certify the
 - [Demo and recordings](#demo-and-recordings)
 - [Dependencies](#dependencies)
 - [Third-party notices](#third-party-notices)
+- [AUR recipe](#aur-recipe)
 - [Stable interfaces](#stable-interfaces)
 - [Pull requests and releases](#pull-requests-and-releases)
 
@@ -45,6 +46,8 @@ license, `GPL-3.0-only` (see [LICENSE](LICENSE)), and you certify the
   [Demo and recordings](#demo-and-recordings)).
 - For `scripts/record-demos.sh`: Podman or Docker, and network access
   once, to build the recording image.
+- For the AUR recipe: an Arch Linux system or container with `base-devel`
+  (see [AUR recipe](#aur-recipe)).
 
 All other tools (Go, GoReleaser, golangci-lint, cosign, syft, gitlint,
 shellcheck, go-licenses) come at pinned versions from the build image
@@ -224,9 +227,11 @@ reproducible even though Arch is a rolling release:
   GoReleaser checksum must also match the upstream `checksums.txt`, and the
   packaged binary must be identical to the upstream one.
 
-go-licenses, which has no packages, is built with `go install` at a pinned
-version; the Go checksum database verifies it. All pins are `ARG` lines in
-the `Containerfile`.
+go-licenses publishes no release binaries. The build image builds it from
+source with `go install` at a pinned version, which the Go checksum
+database verifies, rather than installing the `go-licenses` package of
+Arch Linux; the [AUR recipe](#aur-recipe) uses that package. All pins are
+`ARG` lines in the `Containerfile`.
 
 The official Arch Linux image exists for x86_64 only, so the build image
 does too: the script refuses to build or run it on other architectures. The
@@ -479,7 +484,7 @@ Signed-off-by: Name <email>
 | `build` | Go module, `vendor/`, `Containerfile` and its pins, linter configuration |
 | `scripts` | `scripts/`, including the demo and the recording script |
 | `ci` | `.github/workflows/ci.yml` |
-| `release` | `.goreleaser.yaml`, `.github/workflows/release.yml` |
+| `release` | `.goreleaser.yaml`, `.github/workflows/release.yml`, `packaging/` |
 | `docs` | `README.md`, `CONTRIBUTING.md`, `LICENSE`, `DCO`, `docs/` (recordings and tapes), `examples/` |
 
 No other prefixes are accepted. The release changelog is grouped by these
@@ -693,6 +698,7 @@ Where the notices are installed:
 | `.rpm` | `/usr/share/licenses/lazysubmodules/`: `LICENSE` and `THIRD_PARTY_NOTICES` (both `%license`) and `licenses/` |
 | `.deb` | `/usr/share/doc/lazysubmodules/copyright` |
 | AUR `-bin` recipe | `/usr/share/licenses/lazysubmodules/`, laid out as in the archive |
+| AUR `-git` recipe | `/usr/share/licenses/lazysubmodules-git/`, laid out as in the archive; its `build()` runs the script |
 
 The locations follow each distribution's rules:
 
@@ -720,7 +726,9 @@ When the dependencies change:
 - **A license new to the binary:** add it to the SPDX expression in the
   `license` field of `nfpms` in `.goreleaser.yaml`. The generated `-bin`
   recipe reuses that field, and `package-test` fails until the field is
-  updated. The license must be on the allowed list (see
+  updated. Update the `license` array of
+  `packaging/aur/lazysubmodules-git/PKGBUILD` and its `.SRCINFO` by hand.
+  The license must be on the allowed list (see
   [Dependencies](#dependencies)).
 - **A `NOTICE` file:** go-licenses saves `NOTICE`, `NOTICE.txt` and
   `NOTICE.md` next to the license of a module; Apache-2.0 requires them
@@ -738,6 +746,75 @@ When the dependencies change:
 To inspect the notices, run `snapshot` and read `build/third-party/`.
 With `go` and `go-licenses` installed on the host, run the script
 directly: `scripts/third-party-licenses.sh -h` lists its options.
+
+## AUR recipe
+
+`packaging/aur/lazysubmodules-git/` holds the recipe of the planned AUR
+package `lazysubmodules-git`, which builds the default branch of the
+GitHub repository. The package is not published yet.
+
+| File | Content |
+|---|---|
+| `PKGBUILD` | The recipe |
+| `.SRCINFO` | The metadata that the AUR reads, generated from `PKGBUILD` |
+| `LICENSE` | A copy of the GPL for the recipe itself, as the AUR asks for |
+
+What the recipe does:
+
+- **`pkgver()`:** derives the version from the newest annotated `v*` tag
+  with `git describe`, for example `0.1.0.r3.g1234abc` three commits after
+  `v0.1.0`. A pre-release loses its separators (`v0.1.0-rc.1` becomes
+  `0.1.0rc1`), so that `vercmp` sorts it below the release. Before the
+  first release tag, the version is `r<commit count>.<commit>`.
+- **`build()`:** follows the Go package guidelines of Arch Linux: PIE,
+  `-trimpath`, the cgo flags from `makepkg.conf`, and external linking
+  with the Arch `LDFLAGS`. It builds from `vendor/` with `GOPROXY=off`
+  and `GOTOOLCHAIN=local`, sets the version, the commit and the commit
+  date with `-ldflags`, and runs `scripts/third-party-licenses.sh`. The
+  commit date, as in the release binaries, keeps a rebuild of the same
+  commit identical.
+- **No debug package:** `options=('!debug')`. With `-trimpath`, the binary
+  records no paths of the build directory, so `debugedit` would find no
+  sources for a `lazysubmodules-git-debug` package.
+- **`check()`:** runs `go test ./...`, which uses `ssh-keygen`
+  (`openssh` in `checkdepends`).
+- **`package()`:** installs the binary, the `lsm` symlink, the license
+  with the third-party notices, and the README.
+
+After every change of `PKGBUILD`, regenerate `.SRCINFO` and commit both
+with the `release:` prefix:
+
+```sh
+cd packaging/aur/lazysubmodules-git
+makepkg --printsrcinfo > .SRCINFO
+```
+
+- **Testing:** build the package in a clean Arch Linux container as an
+  unprivileged user with `makepkg -s`, which also runs `check()`, install
+  it with `pacman -U`, and run `namcap` on the recipe and the package.
+  `makepkg` must build no `-debug` package, and
+  `strings /usr/bin/lazysubmodules` must show no path of the build
+  directory. Expected namcap reports: for the recipe, `git` as a make
+  dependency that is already included as a dependency, and for the
+  package, `git` as a dependency that may not be needed. `git` stays in
+  `makedepends`, as the VCS package guidelines ask, and in `depends`,
+  because the binary runs it.
+- **Unpublished changes:** the recipe clones the GitHub repository. To
+  build a change that is not pushed yet, point `source` at a local clone
+  for the test, for example `git+file:///path/to/clone`, and do not commit
+  that.
+- **`pkgver` in the repository** only records the version of the last
+  publication; `makepkg` computes the current one when it builds.
+
+Publishing is up to the maintainers, once the package is registered in the
+AUR; only then does the README link to it:
+
+1. Clone `ssh://aur@aur.archlinux.org/lazysubmodules-git.git`.
+2. Copy `PKGBUILD`, `.SRCINFO` and `LICENSE` into it.
+3. Run `makepkg -od` to refresh `pkgver`, then
+   `makepkg --printsrcinfo > .SRCINFO`.
+4. Commit and push, and bring the refreshed `PKGBUILD` and `.SRCINFO`
+   back into this repository.
 
 ## Stable interfaces
 
@@ -778,8 +855,9 @@ directly: `scripts/third-party-licenses.sh -h` lists its options.
   same commit gives identical archives and packages), and
   signs `checksums.txt` with cosign keyless signing.
 - No AUR package is published yet. The planned `lazysubmodules-git`
-  package would build from this repository; register it in the AUR before
-  the README links to it again. GoReleaser also generates a
+  package builds from this repository with the recipe in
+  `packaging/aur/` (see [AUR recipe](#aur-recipe)); register it in the
+  AUR before the README links to it. GoReleaser also generates a
   `lazysubmodules-bin` recipe, but publishes it only when the `AUR_KEY`
   secret is set, which the project does not do.
 - Release archives and packages include the third-party license notices
