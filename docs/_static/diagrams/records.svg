@@ -1,0 +1,47 @@
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com> -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 318" width="100%" role="img" aria-labelledby="records-title records-desc" class="lsm-dg">
+  <title id="records-title">The four records of a submodule</title>
+  <desc id="records-desc">Four boxes from left to right: the tracking configuration in .gitmodules says what to track, the lock entry in .lsm.lock says what it resolved to, the gitlink in the index and in HEAD says what the superproject records, and the submodule HEAD says what is checked out. Below them, three brackets: status compares all four records and the local refs; verify compares the lock entry, the gitlink in HEAD, the checkout and the locked tag; update reads the configuration and writes the other three records.</desc>
+
+  <g>
+    <rect class="lsm-dg-box" x="1" y="1" width="170" height="126" rx="10" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-text" x="16" y="30" fill="currentColor">Configuration</text>
+    <text class="lsm-dg-mono" x="16" y="56" fill="currentColor">.gitmodules</text>
+    <text class="lsm-dg-mono" x="16" y="76" fill="currentColor">lsm-mode, lsm-ref</text>
+    <text class="lsm-dg-sub" x="16" y="110" fill="currentColor">what to track</text>
+  </g>
+  <g>
+    <rect class="lsm-dg-box" x="197" y="1" width="170" height="126" rx="10" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-text" x="212" y="30" fill="currentColor">Lock entry</text>
+    <text class="lsm-dg-mono" x="212" y="56" fill="currentColor">.lsm.lock</text>
+    <text class="lsm-dg-mono" x="212" y="76" fill="currentColor">mode, ref, commit</text>
+    <text class="lsm-dg-sub" x="212" y="110" fill="currentColor">what it resolved to</text>
+  </g>
+  <g>
+    <rect class="lsm-dg-box" x="393" y="1" width="170" height="126" rx="10" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-text" x="408" y="30" fill="currentColor">Gitlink</text>
+    <text class="lsm-dg-mono" x="408" y="56" fill="currentColor">index and HEAD</text>
+    <text class="lsm-dg-mono" x="408" y="76" fill="currentColor">a commit ID</text>
+    <text class="lsm-dg-sub" x="408" y="102" fill="currentColor">what the superproject</text>
+    <text class="lsm-dg-sub" x="408" y="118" fill="currentColor">records</text>
+  </g>
+  <g>
+    <rect class="lsm-dg-box" x="589" y="1" width="170" height="126" rx="10" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-text" x="604" y="30" fill="currentColor">Checkout</text>
+    <text class="lsm-dg-mono" x="604" y="56" fill="currentColor">submodule HEAD</text>
+    <text class="lsm-dg-mono" x="604" y="76" fill="currentColor">a detached commit</text>
+    <text class="lsm-dg-sub" x="604" y="110" fill="currentColor">what is checked out</text>
+  </g>
+
+  <path class="lsm-dg-line lsm-dg-stroke-cyan" d="M8 150 V158 H752 V150" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <text class="lsm-dg-sub" x="380" y="180" text-anchor="middle" fill="currentColor"><tspan class="lsm-dg-mono">status</tspan><tspan dx="8">compares all four records and the local refs</tspan></text>
+
+  <path class="lsm-dg-line lsm-dg-stroke-cyan" d="M204 208 V216 H752 V208" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <text class="lsm-dg-sub" x="478" y="238" text-anchor="middle" fill="currentColor"><tspan class="lsm-dg-mono">verify</tspan><tspan dx="8">compares lock entry, gitlink in HEAD, checkout and locked tag</tspan></text>
+
+  <path class="lsm-dg-line" d="M8 268 V276 H164 V268" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <path class="lsm-dg-line lsm-dg-stroke-cyan" d="M204 268 V276 H752 V268" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text class="lsm-dg-sub" x="86" y="298" text-anchor="middle" fill="currentColor">read by <tspan class="lsm-dg-mono">update</tspan></text>
+  <text class="lsm-dg-sub" x="478" y="298" text-anchor="middle" fill="currentColor"><tspan class="lsm-dg-mono">update</tspan><tspan dx="8">writes the lock entry, the checkout and the index</tspan></text>
+</svg>

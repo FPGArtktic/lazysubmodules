@@ -17,7 +17,11 @@
 #   Config files:       "# SPDX-..." and "# Copyright ..." on lines 1-2;
 #                       also the example .gitmodules and .lsm.lock files and
 #                       text files (*.txt) such as the demo transcript;
-#                       also the AUR recipe (PKGBUILD) and VHS tapes (*.tape)
+#                       also the AUR recipe (PKGBUILD) and VHS tapes (*.tape);
+#                       also Python (*.py) and pip requirements (*.in), such as
+#                       the Sphinx configuration of the documentation site
+#   Style sheets (*.css): "/* SPDX-... */" and "/* Copyright ... */" on
+#                       lines 1-2
 #
 # LICENSE, DCO, go.sum, vendor/, testdata/ and *.golden are exempt. Files of
 # any other type are reported, so that a header rule is added for them.
@@ -146,10 +150,13 @@ header_style()
 	*.sh | *.bash)
 		echo shell
 		;;
+	*.css)
+		echo css
+		;;
 	*.yml | *.yaml | *.toml | *.ini | *.cfg | *.conf | \
 		Containerfile | Dockerfile | Makefile | .containerignore | .dockerignore | \
 		.gitignore | .gitattributes | .gitlint | .editorconfig | \
-		.gitmodules | .lsm.lock | *.txt | PKGBUILD | *.tape)
+		.gitmodules | .lsm.lock | *.txt | PKGBUILD | *.tape | *.py | *.in)
 		echo hash
 		;;
 	*)
@@ -194,6 +201,12 @@ check_file()
 	markdown)
 		if [[ "$l1" != "<!-- ${SPDX} -->" || "$l2" != "<!-- ${COPYRIGHT} -->" ]]; then
 			report "$file" "lines 1-2 must be the '<!-- -->' SPDX and copyright header"
+			return 1
+		fi
+		;;
+	css)
+		if [[ "$l1" != "/* ${SPDX} */" || "$l2" != "/* ${COPYRIGHT} */" ]]; then
+			report "$file" "lines 1-2 must be the '/* */' SPDX and copyright header"
 			return 1
 		fi
 		;;

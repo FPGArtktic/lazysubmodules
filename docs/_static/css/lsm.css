@@ -1,0 +1,573 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com> */
+
+/*
+ * lsm.css - the stylesheet of the LazySubmodules documentation site.
+ *
+ * It sits on top of the Furo theme and sphinx-design. Everything it adds is
+ * either a token (--lsm-*), a class the pages use (.lsm-*), or a small
+ * refinement of a Furo component. Colors come from docs/assets/social-preview.svg
+ * and from the state colors the program prints; every text pair reaches a
+ * contrast ratio of at least 4.5:1 in both themes.
+ *
+ * Dark values are declared twice, as Furo does it: once for the system
+ * preference (unless the reader forced the light theme) and once for the theme
+ * the reader picked.
+ */
+
+/* ------------------------------------------------------------------ tokens */
+
+body {
+	--lsm-green: #1a7f37;
+	--lsm-cyan: #0a6e77;
+	--lsm-ok: #1a7f37;
+	--lsm-behind: #9a6700;
+	--lsm-drift: #cf222e;
+	--lsm-dirty: #8250df;
+	--lsm-muted: #59636e;
+
+	/* The GIF recordings use this background; the frame continues it. */
+	--lsm-terminal-bg: #1d1c2d;
+	--lsm-terminal-bar: #11111b;
+	--lsm-terminal-border: rgb(255 255 255 / 0.14);
+
+	--lsm-radius: 10px;
+	--lsm-radius-small: 8px;
+	--lsm-shadow: 0 10px 30px rgb(31 35 40 / 0.12);
+	--lsm-shadow-hover: 0 12px 28px rgb(31 35 40 / 0.16);
+	--lsm-surface: #ffffff;
+
+	/* The outline buttons of the hero and the "see also" rows. */
+	--sd-color-secondary: #59636e;
+	--sd-color-secondary-text: #ffffff;
+	--sd-color-secondary-highlight: #424a53;
+}
+
+@media (prefers-color-scheme: dark) {
+	body:not([data-theme="light"]) {
+		--lsm-green: #56d364;
+		--lsm-cyan: #39c5cf;
+		--lsm-ok: #3fb950;
+		--lsm-behind: #d29922;
+		--lsm-drift: #f85149;
+		--lsm-dirty: #bc8cff;
+		--lsm-muted: #8b949e;
+
+		--lsm-terminal-border: rgb(255 255 255 / 0.10);
+		--lsm-shadow: 0 14px 32px rgb(1 4 9 / 0.55);
+		--lsm-shadow-hover: 0 16px 36px rgb(1 4 9 / 0.65);
+		--lsm-surface: #10161f;
+
+		--sd-color-secondary: #8b949e;
+		--sd-color-secondary-text: #0d1117;
+		--sd-color-secondary-highlight: #c9d1d9;
+	}
+}
+
+body[data-theme="dark"] {
+	--lsm-green: #56d364;
+	--lsm-cyan: #39c5cf;
+	--lsm-ok: #3fb950;
+	--lsm-behind: #d29922;
+	--lsm-drift: #f85149;
+	--lsm-dirty: #bc8cff;
+	--lsm-muted: #8b949e;
+
+	--lsm-terminal-border: rgb(255 255 255 / 0.10);
+	--lsm-shadow: 0 14px 32px rgb(1 4 9 / 0.55);
+	--lsm-shadow-hover: 0 16px 36px rgb(1 4 9 / 0.65);
+	--lsm-surface: #10161f;
+
+	--sd-color-secondary: #8b949e;
+	--sd-color-secondary-text: #0d1117;
+	--sd-color-secondary-highlight: #c9d1d9;
+}
+
+/* -------------------------------------------------------------- typography */
+
+h1,
+h2,
+h3,
+h4 {
+	letter-spacing: -0.01em;
+}
+
+article[role="main"] h2 {
+	margin-top: 2.25rem;
+	padding-top: 1.25rem;
+	border-top: 1px solid var(--color-background-border);
+	font-size: 1.5rem;
+}
+
+article[role="main"] h3 {
+	margin-top: 1.75rem;
+	font-size: 1.2rem;
+}
+
+/* The first paragraph of a page carries the summary; give it more presence. */
+article[role="main"] > section > h1 + p {
+	color: var(--color-foreground-secondary);
+	font-size: 1.05rem;
+	line-height: 1.6;
+}
+
+article[role="main"] p,
+article[role="main"] li {
+	line-height: 1.7;
+}
+
+/* --------------------------------------------------------------- the brand */
+
+.lsm-accent {
+	color: var(--lsm-green);
+}
+
+/* Logo and name in one row instead of two stacked blocks. */
+.sidebar-brand {
+	flex-direction: row;
+	align-items: center;
+	gap: 0.7rem;
+}
+
+.sidebar-logo-container {
+	flex: 0 0 auto;
+	margin: 0;
+	width: 2.25rem;
+}
+
+.sidebar-logo {
+	margin: 0;
+	border-radius: 7px;
+}
+
+.sidebar-brand-text {
+	margin: 0;
+	font-size: 1.25rem;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+}
+
+/* ---------------------------------------------------------------- the hero */
+
+#lazysubmodules > h1 {
+	margin-bottom: 0.75rem;
+	font-size: 2.6rem;
+	font-weight: 750;
+	letter-spacing: -0.025em;
+}
+
+#lazysubmodules > h1 + p {
+	max-width: 34em;
+	font-size: 1.25rem;
+	line-height: 1.5;
+	color: var(--color-foreground-secondary);
+}
+
+/* The landing page is a sequence of sections, not a document; it needs air. */
+#lazysubmodules > h2 {
+	margin-top: 3rem;
+}
+
+.lsm-hero {
+	margin: 1.5rem 0 0;
+}
+
+.lsm-tagline {
+	max-width: 42em;
+	color: var(--color-foreground-secondary);
+	font-size: 1.05rem;
+	line-height: 1.65;
+}
+
+.lsm-hero-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.6rem;
+	margin: 1.4rem 0 1.8rem;
+}
+
+.lsm-hero-actions > p,
+.lsm-hero-actions > div {
+	margin: 0;
+}
+
+.lsm-hero-actions .sd-btn {
+	padding: 0.5rem 1.1rem;
+	border-radius: var(--lsm-radius-small);
+	font-weight: 600;
+}
+
+.lsm-hero-actions .sd-btn svg {
+	vertical-align: -0.15em;
+	margin-right: 0.35em;
+}
+
+/* Small muted paragraph, for example the "no release yet" line. */
+.lsm-note {
+	color: var(--color-foreground-muted);
+	font-size: 0.9rem;
+}
+
+/* ------------------------------------------------- terminal frame for GIFs */
+
+.lsm-terminal {
+	position: relative;
+	margin: 1.5rem 0 0.75rem;
+	padding: 2rem 0.5rem 0.5rem;
+	background: var(--lsm-terminal-bg);
+	border: 1px solid var(--lsm-terminal-border);
+	border-radius: var(--lsm-radius);
+	box-shadow: var(--lsm-shadow);
+	overflow: hidden;
+}
+
+/* Title bar with the three window buttons. */
+.lsm-terminal::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 1.75rem;
+	background-color: var(--lsm-terminal-bar);
+	background-image:
+		radial-gradient(circle at 0.85rem 50%, #ff5f57 0.3125rem, transparent 0.3255rem),
+		radial-gradient(circle at 1.95rem 50%, #febc2e 0.3125rem, transparent 0.3255rem),
+		radial-gradient(circle at 3.05rem 50%, #28c840 0.3125rem, transparent 0.3255rem);
+	background-repeat: no-repeat;
+	border-bottom: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.lsm-terminal img {
+	display: block;
+	width: 100%;
+	height: auto;
+	border-radius: 4px;
+}
+
+/* One sentence under a GIF or a diagram. */
+.lsm-caption {
+	margin-top: 0.5rem;
+	color: var(--color-foreground-muted);
+	font-size: 0.875rem;
+	text-align: center;
+}
+
+/* ------------------------------------------------------------------- cards */
+
+.lsm-card.sd-card {
+	border: 1px solid var(--color-background-border);
+	border-radius: var(--lsm-radius);
+	background: var(--lsm-surface);
+	box-shadow: none;
+	transition:
+		border-color 120ms ease-in-out,
+		box-shadow 120ms ease-in-out,
+		transform 120ms ease-in-out;
+}
+
+.lsm-card .sd-card-body {
+	padding: 1.15rem 1.25rem;
+}
+
+.lsm-card .sd-card-title {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5rem;
+	margin-bottom: 0.5rem;
+	font-size: 1rem;
+	font-weight: 700;
+	line-height: 1.4;
+}
+
+.lsm-card .sd-card-title svg {
+	flex: 0 0 auto;
+	align-self: center;
+	color: var(--lsm-green);
+	height: 1.05rem;
+	width: 1.05rem;
+}
+
+.lsm-card .sd-card-text {
+	margin-bottom: 0;
+	color: var(--color-foreground-secondary);
+	font-size: 0.925rem;
+	line-height: 1.6;
+}
+
+.lsm-card.sd-card-hover:hover {
+	border-color: var(--lsm-green);
+	box-shadow: var(--lsm-shadow-hover);
+	transform: translateY(-2px);
+}
+
+/* ------------------------------------------------------------ state chips */
+
+.lsm-state {
+	display: inline-block;
+	padding: 0.05em 0.5em;
+	border-radius: 999px;
+	font-family: var(--font-stack--monospace);
+	font-size: 0.85em;
+	line-height: 1.5;
+	white-space: nowrap;
+}
+
+.lsm-state-ok {
+	color: var(--lsm-ok);
+	background: color-mix(in srgb, var(--lsm-ok) 14%, transparent);
+}
+
+.lsm-state-behind {
+	color: var(--lsm-behind);
+	background: color-mix(in srgb, var(--lsm-behind) 14%, transparent);
+}
+
+.lsm-state-drift,
+.lsm-state-missing-ref {
+	color: var(--lsm-drift);
+	background: color-mix(in srgb, var(--lsm-drift) 14%, transparent);
+}
+
+.lsm-state-dirty {
+	color: var(--lsm-dirty);
+	background: color-mix(in srgb, var(--lsm-dirty) 14%, transparent);
+}
+
+.lsm-state-uninitialized,
+.lsm-state-unmanaged {
+	color: var(--lsm-muted);
+	background: color-mix(in srgb, var(--lsm-muted) 14%, transparent);
+}
+
+/* --------------------------------------------------------------- diagrams */
+
+.lsm-diagram {
+	max-width: 760px;
+	margin: 1.75rem auto 0.5rem;
+	color: var(--color-foreground-muted);
+}
+
+.lsm-diagram svg {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+
+.lsm-dg-box {
+	fill: var(--color-background-secondary);
+	stroke: var(--color-background-border);
+	stroke-width: 1.5;
+}
+
+.lsm-dg-box-accent {
+	fill: color-mix(in srgb, var(--lsm-green) 10%, transparent);
+	stroke: var(--lsm-green);
+	stroke-width: 1.5;
+}
+
+.lsm-dg-text {
+	fill: var(--color-foreground-primary);
+	font: 600 14px var(--font-stack);
+}
+
+.lsm-dg-sub {
+	fill: var(--color-foreground-muted);
+	font: 12px var(--font-stack);
+}
+
+.lsm-dg-mono {
+	fill: var(--color-foreground-secondary);
+	font: 12px var(--font-stack--monospace);
+}
+
+.lsm-dg-line {
+	fill: none;
+	stroke: var(--color-foreground-muted);
+	stroke-width: 1.5;
+}
+
+.lsm-dg-arrow {
+	fill: var(--color-foreground-muted);
+	stroke: none;
+}
+
+.lsm-dg-ok {
+	fill: var(--lsm-ok);
+}
+
+.lsm-dg-behind {
+	fill: var(--lsm-behind);
+}
+
+.lsm-dg-drift {
+	fill: var(--lsm-drift);
+}
+
+.lsm-dg-dirty {
+	fill: var(--lsm-dirty);
+}
+
+.lsm-dg-muted {
+	fill: var(--lsm-muted);
+}
+
+.lsm-dg-stroke-cyan {
+	stroke: var(--lsm-cyan);
+}
+
+/* ------------------------------------------------- code, tables, key caps */
+
+article[role="main"] .highlight,
+article[role="main"] pre.literal-block {
+	border: 1px solid var(--color-background-border);
+	border-radius: var(--lsm-radius-small);
+}
+
+article[role="main"] .highlight pre {
+	padding: 0.75rem 0.9rem;
+}
+
+/* literalinclude with a caption: join the caption and the block. */
+article[role="main"] .literal-block-wrapper .code-block-caption {
+	margin-bottom: -0.35rem;
+	color: var(--color-foreground-muted);
+	font-size: 0.85rem;
+}
+
+.highlight button.copybtn {
+	border-radius: 6px;
+}
+
+article[role="main"] table.docutils {
+	box-shadow: none;
+	font-variant-numeric: tabular-nums;
+}
+
+article[role="main"] table.docutils th,
+article[role="main"] table.docutils td {
+	border-left: none;
+	border-right: none;
+	border-bottom: 1px solid var(--color-table-border);
+	padding: 0.45rem 0.8rem;
+	vertical-align: top;
+}
+
+article[role="main"] table.docutils thead th {
+	border-bottom: 2px solid var(--color-table-border);
+	font-weight: 700;
+	text-align: left;
+}
+
+article[role="main"] table.docutils tbody tr:last-child td {
+	border-bottom: none;
+}
+
+kbd.kbd {
+	display: inline-block;
+	padding: 0.05em 0.45em;
+	border: 1px solid var(--color-background-border);
+	border-bottom-width: 2px;
+	border-radius: 5px;
+	background: var(--color-background-secondary);
+	color: var(--color-foreground-primary);
+	font-family: var(--font-stack--monospace);
+	font-size: 0.8em;
+	line-height: 1.6;
+	white-space: nowrap;
+}
+
+/* ------------------------------------------------------- Furo refinements */
+
+article[role="main"] .admonition,
+article[role="main"] .admonition-title {
+	border-radius: var(--lsm-radius-small);
+}
+
+article[role="main"] .admonition {
+	box-shadow: none;
+	border: 1px solid var(--color-background-border);
+}
+
+article[role="main"] .admonition-title {
+	border-bottom-left-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+article[role="main"] img {
+	max-width: 100%;
+	height: auto;
+}
+
+/* Tab sets: a little more room, and a quieter panel. */
+article[role="main"] .sd-tab-set > label {
+	padding: 0.5em 0.9em;
+	font-weight: 600;
+}
+
+article[role="main"] .sd-tab-content {
+	padding: 1rem 0 0.25rem;
+}
+
+article[role="main"] .sd-tab-content > :last-child {
+	margin-bottom: 0.5rem;
+}
+
+/* The "view source" and "edit this page" buttons at the top of a page. */
+.content-icon-container {
+	color: var(--color-foreground-muted);
+}
+
+/* ------------------------------------------------------------ small screens */
+
+@media (max-width: 46em) {
+	#lazysubmodules > h1 {
+		font-size: 2rem;
+	}
+
+	#lazysubmodules > h1 + p {
+		font-size: 1.1rem;
+	}
+
+	.lsm-hero-actions {
+		gap: 0.5rem;
+	}
+
+	.lsm-hero-actions .sd-btn {
+		padding: 0.45rem 0.9rem;
+		font-size: 0.9rem;
+	}
+
+	.lsm-terminal {
+		padding: 1.5rem 0.35rem 0.35rem;
+		border-radius: var(--lsm-radius-small);
+	}
+
+	.lsm-terminal::before {
+		height: 1.3rem;
+		background-image:
+			radial-gradient(circle at 0.65rem 50%, #ff5f57 0.25rem, transparent 0.26rem),
+			radial-gradient(circle at 1.55rem 50%, #febc2e 0.25rem, transparent 0.26rem),
+			radial-gradient(circle at 2.45rem 50%, #28c840 0.25rem, transparent 0.26rem);
+	}
+
+	article[role="main"] table.docutils th,
+	article[role="main"] table.docutils td {
+		padding: 0.4rem 0.5rem;
+	}
+
+	.lsm-diagram {
+		margin-top: 1.25rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.lsm-card.sd-card {
+		transition: none;
+	}
+
+	.lsm-card.sd-card-hover:hover {
+		transform: none;
+	}
+}

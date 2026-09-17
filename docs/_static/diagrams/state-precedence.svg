@@ -1,0 +1,62 @@
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com> -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 370" width="100%" role="img" aria-labelledby="state-precedence-title state-precedence-desc">
+  <title id="state-precedence-title">Precedence of the submodule states</title>
+  <desc id="state-precedence-desc">status checks the states in this order, and the first one that matches wins: 1. unmanaged: there is no lsm-mode key in .gitmodules; 2. uninitialized: the submodule is not checked out; 3. dirty: the working tree has uncommitted changes; 4. missing-ref: the configured ref is invalid or not found in the local refs; 5. drift: HEAD differs from the locked commit, or the locked tag moved; 6. behind: no lock entry yet, or update would select another target; 7. ok: none of the above.</desc>
+  <defs>
+    <marker id="state-precedence-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="lsm-dg-arrow" d="M0 0 L10 5 L0 10 Z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <text class="lsm-dg-text" x="44" y="18" fill="currentColor">Checked from top to bottom; the first match wins</text>
+  <path class="lsm-dg-line" d="M16 44 V358" fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#state-precedence-arrow)"/>
+  <g>
+    <rect class="lsm-dg-box" x="36" y="34" width="722" height="38" rx="8" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-mono" x="58" y="57" text-anchor="middle" fill="currentColor">1</text>
+    <rect class="lsm-dg-muted" x="78" y="41" width="132" height="24" rx="12" fill="currentColor" fill-opacity="0.14"/>
+    <text class="lsm-dg-mono" x="144" y="57" text-anchor="middle" fill="currentColor"><tspan class="lsm-dg-muted">unmanaged</tspan></text>
+    <text class="lsm-dg-sub" x="226" y="57" fill="currentColor">there is no lsm-mode key in .gitmodules</text>
+  </g>
+  <g>
+    <rect class="lsm-dg-box" x="36" y="80" width="722" height="38" rx="8" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-mono" x="58" y="103" text-anchor="middle" fill="currentColor">2</text>
+    <rect class="lsm-dg-muted" x="78" y="87" width="132" height="24" rx="12" fill="currentColor" fill-opacity="0.14"/>
+    <text class="lsm-dg-mono" x="144" y="103" text-anchor="middle" fill="currentColor"><tspan class="lsm-dg-muted">uninitialized</tspan></text>
+    <text class="lsm-dg-sub" x="226" y="103" fill="currentColor">the submodule is not checked out</text>
+  </g>
+  <g>
+    <rect class="lsm-dg-box" x="36" y="126" width="722" height="38" rx="8" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-mono" x="58" y="149" text-anchor="middle" fill="currentColor">3</text>
+    <rect class="lsm-dg-dirty" x="78" y="133" width="132" height="24" rx="12" fill="currentColor" fill-opacity="0.14"/>
+    <text class="lsm-dg-mono" x="144" y="149" text-anchor="middle" fill="currentColor"><tspan class="lsm-dg-dirty">dirty</tspan></text>
+    <text class="lsm-dg-sub" x="226" y="149" fill="currentColor">the working tree has uncommitted changes</text>
+  </g>
+  <g>
+    <rect class="lsm-dg-box" x="36" y="172" width="722" height="38" rx="8" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-mono" x="58" y="195" text-anchor="middle" fill="currentColor">4</text>
+    <rect class="lsm-dg-drift" x="78" y="179" width="132" height="24" rx="12" fill="currentColor" fill-opacity="0.14"/>
+    <text class="lsm-dg-mono" x="144" y="195" text-anchor="middle" fill="currentColor"><tspan class="lsm-dg-drift">missing-ref</tspan></text>
+    <text class="lsm-dg-sub" x="226" y="195" fill="currentColor">the configured ref is invalid or not found in the local refs</text>
+  </g>
+  <g>
+    <rect class="lsm-dg-box" x="36" y="218" width="722" height="38" rx="8" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-mono" x="58" y="241" text-anchor="middle" fill="currentColor">5</text>
+    <rect class="lsm-dg-drift" x="78" y="225" width="132" height="24" rx="12" fill="currentColor" fill-opacity="0.14"/>
+    <text class="lsm-dg-mono" x="144" y="241" text-anchor="middle" fill="currentColor"><tspan class="lsm-dg-drift">drift</tspan></text>
+    <text class="lsm-dg-sub" x="226" y="241" fill="currentColor">HEAD differs from the locked commit, or the locked tag moved or is gone</text>
+  </g>
+  <g>
+    <rect class="lsm-dg-box" x="36" y="264" width="722" height="38" rx="8" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-mono" x="58" y="287" text-anchor="middle" fill="currentColor">6</text>
+    <rect class="lsm-dg-behind" x="78" y="271" width="132" height="24" rx="12" fill="currentColor" fill-opacity="0.14"/>
+    <text class="lsm-dg-mono" x="144" y="287" text-anchor="middle" fill="currentColor"><tspan class="lsm-dg-behind">behind</tspan></text>
+    <text class="lsm-dg-sub" x="226" y="287" fill="currentColor">no lock entry yet, or update would select another target</text>
+  </g>
+  <g>
+    <rect class="lsm-dg-box" x="36" y="310" width="722" height="38" rx="8" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-mono" x="58" y="333" text-anchor="middle" fill="currentColor">7</text>
+    <rect class="lsm-dg-ok" x="78" y="317" width="132" height="24" rx="12" fill="currentColor" fill-opacity="0.14"/>
+    <text class="lsm-dg-mono" x="144" y="333" text-anchor="middle" fill="currentColor"><tspan class="lsm-dg-ok">ok</tspan></text>
+    <text class="lsm-dg-sub" x="226" y="333" fill="currentColor">none of the above</text>
+  </g>
+</svg>

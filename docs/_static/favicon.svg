@@ -1,0 +1,26 @@
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com> -->
+<!--
+  Browser tab icon: the logo of docs/_static/logo.svg with a heavier stroke,
+  larger end nodes and a solid tag instead of an outline, so that the mark still
+  reads at 16 px, where thin shapes and the hole in the tag disappear.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"
+     role="img" aria-labelledby="lsm-favicon-title">
+  <title id="lsm-favicon-title">LazySubmodules</title>
+  <defs>
+    <linearGradient id="lsm-favicon-g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#56d364"/>
+      <stop offset="1" stop-color="#39c5cf"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="20" fill="url(#lsm-favicon-g)"/>
+  <g fill="none" stroke="#0d1117" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M26 24 V72"/>
+    <path d="M26 58 C26 44 32 38 44 38"/>
+  </g>
+  <circle cx="26" cy="24" r="9" fill="#0d1117"/>
+  <circle cx="26" cy="72" r="9" fill="#0d1117"/>
+  <path d="M46 24 H68 A4 4 0 0 1 71 25 L83 37 A2 2 0 0 1 83 39 L71 51 A4 4 0 0 1 68 52 H46
+           A4 4 0 0 1 42 48 V28 A4 4 0 0 1 46 24 Z" fill="#0d1117"/>
+</svg>

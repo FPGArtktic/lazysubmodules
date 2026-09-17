@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+#
+# Direct dependencies of the documentation build. The pinned and hashed set
+# that Read the Docs installs is requirements.txt; regenerate it from the
+# repository root with uv 0.12 or later after changing this file:
+#
+#   { sed -n '1,/^$/p' docs/requirements.txt
+#     uv pip compile --quiet --universal --python-version 3.13 \
+#         --generate-hashes --no-header docs/requirements.in
+#   } >docs/requirements.txt.new && mv docs/requirements.txt.new docs/requirements.txt
+#
+# Licenses, all OSI-approved and permissive: Sphinx BSD-2-Clause, Furo MIT,
+# MyST-Parser MIT, sphinx-design MIT, sphinx-copybutton MIT,
+# sphinxext-opengraph BSD-3-Clause. The dependencies they pull in are MIT, BSD,
+# Apache-2.0, PSF-2.0, 0BSD or MPL-2.0 (certifi). Of all of them only the style
+# sheets and scripts of Furo, sphinx-design and sphinx-copybutton end up in the
+# built site, and their licenses allow distributing it.
+
+sphinx>=9.1,<10
+furo>=2025.12.19
+myst-parser>=5.1,<6
+sphinx-design>=0.7,<0.8
+sphinx-copybutton>=0.5.2,<0.6
+sphinxext-opengraph>=0.13,<0.14

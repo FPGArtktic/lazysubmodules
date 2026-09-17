@@ -1,0 +1,93 @@
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com> -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 452" width="100%" role="img" aria-labelledby="update-flow-title update-flow-desc">
+  <title id="update-flow-title">The steps of lazysubmodules update</title>
+  <desc id="update-flow-desc">A vertical pipeline of seven steps. 1: select the submodules, the named ones or every managed one. 2: check every selected submodule and, without --fetch, resolve its target in the local refs, before anything is fetched or checked out. If any submodule is refused, the update stops with exit status 3 and nothing is checked out, written or staged; a dry run stops after this step and prints the plan. 3: only with --fetch, fetch and clone, then resolve the targets in the fetched refs; a refusal at this point keeps the clones. 4: check out the targets, initializing submodules where needed. 5: write .lsm.lock and the tracking keys. 6: stage the gitlinks, .gitmodules and .lsm.lock. 7: only with --commit, commit with git commit -s. An interruption during steps 4 to 6 puts back what was changed, but initialized submodules stay initialized.</desc>
+  <defs>
+    <marker id="update-flow-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="lsm-dg-arrow" d="M0 0 L10 5 L0 10 Z" fill="currentColor"/>
+    </marker>
+  </defs>
+
+  <!-- Steps: x 232..528, height 46, every 64 units. -->
+  <rect class="lsm-dg-box" x="232" y="2" width="296" height="46" rx="10" fill="none" stroke="currentColor"/>
+  <circle class="lsm-dg-box-accent" cx="258" cy="20" r="12" fill="none" stroke="currentColor"/>
+  <text class="lsm-dg-mono" x="258" y="24" text-anchor="middle" fill="currentColor">1</text>
+  <text class="lsm-dg-text" x="394" y="23" text-anchor="middle" fill="currentColor">Select submodules</text>
+  <text class="lsm-dg-sub" x="394" y="40" text-anchor="middle" fill="currentColor">the named ones, or every managed one</text>
+
+  <rect class="lsm-dg-box-accent" x="232" y="66" width="296" height="46" rx="10" fill="none" stroke="currentColor"/>
+  <circle class="lsm-dg-box-accent" cx="258" cy="84" r="12" fill="none" stroke="currentColor"/>
+  <text class="lsm-dg-mono" x="258" y="88" text-anchor="middle" fill="currentColor">2</text>
+  <text class="lsm-dg-text" x="394" y="87" text-anchor="middle" fill="currentColor">Check all, resolve targets</text>
+  <text class="lsm-dg-sub" x="394" y="104" text-anchor="middle" fill="currentColor">before any fetch or checkout</text>
+
+  <rect class="lsm-dg-box" x="232" y="130" width="296" height="46" rx="10" fill="none" stroke="currentColor" stroke-dasharray="6 4"/>
+  <circle class="lsm-dg-box-accent" cx="258" cy="148" r="12" fill="none" stroke="currentColor"/>
+  <text class="lsm-dg-mono" x="258" y="152" text-anchor="middle" fill="currentColor">3</text>
+  <text class="lsm-dg-text" x="394" y="151" text-anchor="middle" fill="currentColor">Fetch, clone where needed</text>
+  <text class="lsm-dg-sub" x="394" y="168" text-anchor="middle" fill="currentColor">only with <tspan class="lsm-dg-mono">--fetch</tspan>, then resolve</text>
+
+  <rect class="lsm-dg-box" x="232" y="194" width="296" height="46" rx="10" fill="none" stroke="currentColor"/>
+  <circle class="lsm-dg-box-accent" cx="258" cy="212" r="12" fill="none" stroke="currentColor"/>
+  <text class="lsm-dg-mono" x="258" y="216" text-anchor="middle" fill="currentColor">4</text>
+  <text class="lsm-dg-text" x="394" y="215" text-anchor="middle" fill="currentColor">Check out the targets</text>
+  <text class="lsm-dg-sub" x="394" y="232" text-anchor="middle" fill="currentColor">initializing submodules where needed</text>
+
+  <rect class="lsm-dg-box" x="232" y="258" width="296" height="46" rx="10" fill="none" stroke="currentColor"/>
+  <circle class="lsm-dg-box-accent" cx="258" cy="276" r="12" fill="none" stroke="currentColor"/>
+  <text class="lsm-dg-mono" x="258" y="280" text-anchor="middle" fill="currentColor">5</text>
+  <text class="lsm-dg-text" x="394" y="279" text-anchor="middle" fill="currentColor">Write the lock file</text>
+  <text class="lsm-dg-sub" x="394" y="296" text-anchor="middle" fill="currentColor"><tspan class="lsm-dg-mono">.lsm.lock</tspan>, and the native <tspan class="lsm-dg-mono">branch</tspan> key</text>
+
+  <rect class="lsm-dg-box" x="232" y="322" width="296" height="46" rx="10" fill="none" stroke="currentColor"/>
+  <circle class="lsm-dg-box-accent" cx="258" cy="340" r="12" fill="none" stroke="currentColor"/>
+  <text class="lsm-dg-mono" x="258" y="344" text-anchor="middle" fill="currentColor">6</text>
+  <text class="lsm-dg-text" x="394" y="343" text-anchor="middle" fill="currentColor">Stage the result</text>
+  <text class="lsm-dg-sub" x="394" y="360" text-anchor="middle" fill="currentColor">gitlinks, .gitmodules and .lsm.lock</text>
+
+  <rect class="lsm-dg-box" x="232" y="386" width="296" height="46" rx="10" fill="none" stroke="currentColor" stroke-dasharray="6 4"/>
+  <circle class="lsm-dg-box-accent" cx="258" cy="404" r="12" fill="none" stroke="currentColor"/>
+  <text class="lsm-dg-mono" x="258" y="408" text-anchor="middle" fill="currentColor">7</text>
+  <text class="lsm-dg-text" x="394" y="407" text-anchor="middle" fill="currentColor">Commit</text>
+  <text class="lsm-dg-sub" x="394" y="424" text-anchor="middle" fill="currentColor">only with <tspan class="lsm-dg-mono">--commit</tspan>: <tspan class="lsm-dg-mono">git commit -s</tspan></text>
+
+  <!-- Arrows between the steps. -->
+  <g class="lsm-dg-line" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M380 49 V64" marker-end="url(#update-flow-arrow)"/>
+    <path d="M380 113 V128" marker-end="url(#update-flow-arrow)"/>
+    <path d="M380 177 V192" marker-end="url(#update-flow-arrow)"/>
+    <path d="M380 241 V256" marker-end="url(#update-flow-arrow)"/>
+    <path d="M380 305 V320" marker-end="url(#update-flow-arrow)"/>
+    <path d="M380 369 V384" marker-end="url(#update-flow-arrow)"/>
+    <path d="M529 89 H566" marker-end="url(#update-flow-arrow)"/>
+    <path d="M231 89 H200" stroke-dasharray="4 4" marker-end="url(#update-flow-arrow)"/>
+  </g>
+
+  <!-- Refusal, to the right of step 2. -->
+  <rect class="lsm-dg-box" x="570" y="42" width="188" height="94" rx="10" fill="none" stroke="currentColor"/>
+  <rect class="lsm-dg-drift" x="570" y="48" width="5" height="82" rx="2.5" fill="currentColor"/>
+  <text class="lsm-dg-text" x="588" y="66" fill="currentColor">Any refusal</text>
+  <text class="lsm-dg-sub" x="588" y="86" fill="currentColor">nothing is checked out,</text>
+  <text class="lsm-dg-sub" x="588" y="102" fill="currentColor">written or staged</text>
+  <text class="lsm-dg-mono" x="588" y="124" fill="currentColor">exit status 3</text>
+
+  <!-- A refusal after the fetch, to the right of step 3. -->
+  <text class="lsm-dg-sub" x="570" y="150" fill="currentColor">a refusal here</text>
+  <text class="lsm-dg-sub" x="570" y="166" fill="currentColor">keeps the clones</text>
+
+  <!-- Dry run, to the left of step 2. -->
+  <text class="lsm-dg-text" x="192" y="83" text-anchor="end" fill="currentColor"><tspan class="lsm-dg-mono">--dry-run</tspan></text>
+  <text class="lsm-dg-sub" x="192" y="101" text-anchor="end" fill="currentColor">prints the plan, stops</text>
+
+  <!-- Failed or interrupted commit, to the right of step 7. -->
+  <text class="lsm-dg-sub" x="548" y="405" fill="currentColor">fails or is interrupted:</text>
+  <text class="lsm-dg-sub" x="548" y="421" fill="currentColor">the update stays staged</text>
+
+  <!-- Rollback bracket along steps 4 to 6. -->
+  <path class="lsm-dg-line lsm-dg-stroke-cyan" d="M214 196 H206 V366 H214" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <text class="lsm-dg-text" x="192" y="266" text-anchor="end" fill="currentColor">Interrupted?</text>
+  <text class="lsm-dg-sub" x="192" y="284" text-anchor="end" fill="currentColor">changes are put back,</text>
+  <text class="lsm-dg-sub" x="192" y="300" text-anchor="end" fill="currentColor">nothing is staged,</text>
+  <text class="lsm-dg-sub" x="192" y="316" text-anchor="end" fill="currentColor">initialized submodules stay</text>
+</svg>

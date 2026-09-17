@@ -1,0 +1,51 @@
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com> -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 262" width="100%" role="img" aria-labelledby="tag-selection-title tag-selection-desc">
+  <title id="tag-selection-title">How a tag pattern selects a tag</title>
+  <desc id="tag-selection-desc">Three columns. Pattern v6.6.* (default): the kernel tags sorted by version, highest first, skipping the pre-release v6.6.11-rc1; v6.6.10 is selected, while the lock records v6.6.9. Pattern v6.6.* (with --include-prerelease): the kernel tags sorted by version, highest first; v6.6.11-rc1 is selected, while the lock records v6.6.9. Pattern v6.* (default): the kernel tags sorted by version, highest first, skipping the pre-release v6.7-rc1 and v6.6.11-rc1; v6.6.10 is selected, while the lock records v6.6.9.</desc>
+  <g>
+    <rect class="lsm-dg-box" x="1" y="1" width="238" height="50" rx="10" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-mono" x="17" y="22" fill="currentColor"><tspan class="lsm-dg-text">v6.6.*</tspan></text>
+    <text class="lsm-dg-sub" x="17" y="40" fill="currentColor">default</text>
+    <text class="lsm-dg-mono" x="17" y="82" fill="currentColor"><tspan class="lsm-dg-muted" text-decoration="line-through">v6.6.11-rc1</tspan></text>
+    <text class="lsm-dg-sub" x="225" y="82" text-anchor="end" fill="currentColor">pre-release</text>
+    <rect class="lsm-dg-box-accent" x="1" y="96" width="238" height="26" rx="6" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-mono" x="17" y="114" fill="currentColor"><tspan class="lsm-dg-ok">v6.6.10</tspan></text>
+    <text class="lsm-dg-text" x="225" y="114" text-anchor="end" fill="currentColor">selected</text>
+    <text class="lsm-dg-mono" x="17" y="146" fill="currentColor">v6.6.9</text>
+    <text class="lsm-dg-sub" x="225" y="146" text-anchor="end" fill="currentColor">locked</text>
+    <text class="lsm-dg-mono" x="17" y="178" fill="currentColor">v6.6.8</text>
+    <text class="lsm-dg-sub" x="17" y="210" fill="currentColor">…</text>
+    <text class="lsm-dg-mono" x="17" y="242" fill="currentColor">v6.6.1</text>
+  </g>
+  <g>
+    <rect class="lsm-dg-box" x="261" y="1" width="238" height="50" rx="10" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-mono" x="277" y="22" fill="currentColor"><tspan class="lsm-dg-text">v6.6.*</tspan></text>
+    <text class="lsm-dg-sub" x="277" y="40" fill="currentColor">with <tspan class="lsm-dg-mono">--include-prerelease</tspan></text>
+    <rect class="lsm-dg-box-accent" x="261" y="64" width="238" height="26" rx="6" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-mono" x="277" y="82" fill="currentColor"><tspan class="lsm-dg-ok">v6.6.11-rc1</tspan></text>
+    <text class="lsm-dg-text" x="485" y="82" text-anchor="end" fill="currentColor">selected</text>
+    <text class="lsm-dg-mono" x="277" y="114" fill="currentColor">v6.6.10</text>
+    <text class="lsm-dg-mono" x="277" y="146" fill="currentColor">v6.6.9</text>
+    <text class="lsm-dg-sub" x="485" y="146" text-anchor="end" fill="currentColor">locked</text>
+    <text class="lsm-dg-mono" x="277" y="178" fill="currentColor">v6.6.8</text>
+    <text class="lsm-dg-sub" x="277" y="210" fill="currentColor">…</text>
+    <text class="lsm-dg-mono" x="277" y="242" fill="currentColor">v6.6.1</text>
+  </g>
+  <g>
+    <rect class="lsm-dg-box" x="521" y="1" width="238" height="50" rx="10" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-mono" x="537" y="22" fill="currentColor"><tspan class="lsm-dg-text">v6.*</tspan></text>
+    <text class="lsm-dg-sub" x="537" y="40" fill="currentColor">default</text>
+    <text class="lsm-dg-mono" x="537" y="82" fill="currentColor"><tspan class="lsm-dg-muted" text-decoration="line-through">v6.7-rc1</tspan></text>
+    <text class="lsm-dg-sub" x="745" y="82" text-anchor="end" fill="currentColor">pre-release</text>
+    <text class="lsm-dg-mono" x="537" y="114" fill="currentColor"><tspan class="lsm-dg-muted" text-decoration="line-through">v6.6.11-rc1</tspan></text>
+    <text class="lsm-dg-sub" x="745" y="114" text-anchor="end" fill="currentColor">pre-release</text>
+    <rect class="lsm-dg-box-accent" x="521" y="128" width="238" height="26" rx="6" fill="none" stroke="currentColor"/>
+    <text class="lsm-dg-mono" x="537" y="146" fill="currentColor"><tspan class="lsm-dg-ok">v6.6.10</tspan></text>
+    <text class="lsm-dg-text" x="745" y="146" text-anchor="end" fill="currentColor">selected</text>
+    <text class="lsm-dg-mono" x="537" y="178" fill="currentColor">v6.6.9</text>
+    <text class="lsm-dg-sub" x="745" y="178" text-anchor="end" fill="currentColor">locked</text>
+    <text class="lsm-dg-sub" x="537" y="210" fill="currentColor">…</text>
+    <text class="lsm-dg-mono" x="537" y="242" fill="currentColor">v6.6.1</text>
+  </g>
+</svg>
