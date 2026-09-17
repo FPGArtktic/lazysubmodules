@@ -89,26 +89,70 @@ func Load(ctx context.Context, g *git.Runner, root string) (*Lock, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", File, err)
 	}
-	l := &Lock{index: make(map[string]int)}
+	l, err := parse(File, vars)
+	if err != nil {
+		return nil, err
+	}
+	return l, nil
+}
+
+// LoadRev reads the lock file recorded in a revision of a superproject, or
+// in its index.
+//
+// The recorded file is parsed and validated as Load does it with the working
+// tree copy. Objects missing from a partial clone are not fetched.
+//
+// Context: root is the top level of the superproject; rev names a commit,
+// such as "HEAD", or is empty for the index. A revision or index without the
+// file yields an empty lock.
+// Return: the lock; an error wrapping ErrInvalidEntry naming the first
+// invalid entry, along with a lock of the other entries; an error wrapping
+// git.ErrRefNotFound when rev does not exist (for example an unborn HEAD);
+// an error wrapping git.ErrInvalidRefName when rev starts with "-"; an
+// error wrapping git.ErrUnmerged when the index holds conflict stages for
+// the file; or an error as Load returns it, where git.ErrNotRegularFile
+// means that the recorded file is not a regular file.
+func LoadRev(ctx context.Context, g *git.Runner, root, rev string) (*Lock, error) {
+	src := rev + ":" + File
+	vars, err := g.ConfigListRev(ctx, root, rev, File)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", src, err)
+	}
+	return parse(src, vars)
+}
+
+// parse builds a lock from the variables of a lock file. It returns the
+// valid entries, and an error wrapping ErrInvalidEntry that names the first
+// invalid one; src names the file in errors.
+func parse(src string, vars []git.ConfigEntry) (*Lock, error) {
+	var entries []Entry
+	index := make(map[string]int)
 	for _, v := range vars {
 		name, variable, ok := splitKey(v.Key)
 		if !ok {
 			continue
 		}
-		i, seen := l.index[name]
+		i, seen := index[name]
 		if !seen {
-			i = len(l.entries)
-			l.index[name] = i
-			l.entries = append(l.entries, Entry{Name: name})
+			i = len(entries)
+			index[name] = i
+			entries = append(entries, Entry{Name: name})
 		}
-		l.entries[i].set(variable, v.Value)
+		entries[i].set(variable, v.Value)
 	}
-	for _, e := range l.entries {
+	l := &Lock{index: make(map[string]int, len(entries))}
+	var invalid error
+	for _, e := range entries {
 		if err := e.validate(); err != nil {
-			return nil, fmt.Errorf("%s: %w", File, err)
+			if invalid == nil {
+				invalid = fmt.Errorf("%s: %w", src, err)
+			}
+			continue
 		}
+		l.index[e.Name] = len(l.entries)
+		l.entries = append(l.entries, e)
 	}
-	return l, nil
+	return l, invalid
 }
 
 // Get looks up the entry of a submodule.

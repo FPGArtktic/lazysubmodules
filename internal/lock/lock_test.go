@@ -267,3 +267,142 @@ func TestLoadCanceled(t *testing.T) {
 		t.Errorf("Load(canceled) = %v, want %v", err, context.Canceled)
 	}
 }
+
+// commitAll stages every change in dir and commits it.
+func commitAll(t *testing.T, dir, msg string) {
+	t.Helper()
+	gittest.Git(t, dir, "add", "--all")
+	gittest.Git(t, dir, "commit", "--quiet", "--message="+msg)
+}
+
+func TestLoadRev(t *testing.T) {
+	t.Parallel()
+	for _, format := range []string{gittest.SHA1, gittest.SHA256} {
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+			g := gittest.Runner(t)
+			ctx := t.Context()
+			dir := gittest.InitRepo(t, format)
+			gittest.WriteFile(t, filepath.Join(dir, "README"), "x\n")
+			commitAll(t, dir, "initial commit")
+			gittest.WriteFile(t, filepath.Join(dir, lock.File), sample)
+			commitAll(t, dir, "add lock")
+			staged := lock.Entry{Name: "kernel", Mode: manifest.ModeTag, Ref: "v6.7", Commit: sha1B}
+			if err := lock.Write(ctx, g, dir, staged); err != nil {
+				t.Fatal(err)
+			}
+			gittest.Git(t, dir, "add", lock.File)
+			worktree := lock.Entry{Name: "kernel", Mode: manifest.ModeTag, Ref: "v6.8", Commit: sha256A}
+			if err := lock.Write(ctx, g, dir, worktree); err != nil {
+				t.Fatal(err)
+			}
+
+			want := map[string][]lock.Entry{
+				"HEAD":   sampleEntries(),
+				"":       sampleEntries(),
+				"HEAD~1": nil,
+			}
+			want[""][0] = staged
+			for rev, entries := range want {
+				l, err := lock.LoadRev(ctx, g, dir, rev)
+				if err != nil {
+					t.Errorf("LoadRev(%q) = %v", rev, err)
+					continue
+				}
+				if got := l.Entries(); !slices.Equal(got, entries) {
+					t.Errorf("LoadRev(%q).Entries =\n%+v\nwant\n%+v", rev, got, entries)
+				}
+			}
+			if got, _ := load(t, g, dir).Get("kernel"); got != worktree {
+				t.Errorf("Load: kernel = %+v, want %+v", got, worktree)
+			}
+		})
+	}
+}
+
+func TestLoadRevUnborn(t *testing.T) {
+	t.Parallel()
+	g := gittest.Runner(t)
+	ctx := t.Context()
+	dir := newRepo(t, sample)
+	l, err := lock.LoadRev(ctx, g, dir, "")
+	if err != nil || l == nil || l.Entries() != nil {
+		t.Errorf("LoadRev(empty index) = %+v, %v; want an empty lock", l, err)
+	}
+	gittest.Git(t, dir, "add", lock.File)
+	l, err = lock.LoadRev(ctx, g, dir, "HEAD")
+	if l != nil || !errors.Is(err, git.ErrRefNotFound) {
+		t.Errorf("LoadRev(unborn HEAD) = %+v, %v; want ErrRefNotFound", l, err)
+	}
+	l, err = lock.LoadRev(ctx, g, dir, "")
+	if err != nil || !slices.Equal(l.Entries(), sampleEntries()) {
+		t.Errorf("LoadRev(index) = %+v, %v", l, err)
+	}
+}
+
+func TestLoadRevErrors(t *testing.T) {
+	t.Parallel()
+	g := gittest.Runner(t)
+	ctx := t.Context()
+	commit := sha1A
+	dir := newRepo(t, "[submodule \"bad\"]\n\tmode = tag\n\tref = v1\n"+
+		"[submodule \"good\"]\n\tmode = tag\n\tref = v1\n\tcommit = "+commit+"\n"+
+		"[submodule \"worse\"]\n\tmode = other\n\tref = v1\n\tcommit = "+commit+"\n")
+	commitAll(t, dir, "add lock")
+	// The recorded files keep the valid entries, the working tree copy none.
+	valid := []lock.Entry{{Name: "good", Mode: manifest.ModeTag, Ref: "v1", Commit: commit}}
+	for rev, prefix := range map[string]string{
+		"HEAD": `HEAD:.lsm.lock: invalid lock entry "bad": `,
+		"":     `:.lsm.lock: invalid lock entry "bad": `,
+	} {
+		l, err := lock.LoadRev(ctx, g, dir, rev)
+		if l == nil || !slices.Equal(l.Entries(), valid) || !errors.Is(err, lock.ErrInvalidEntry) ||
+			!strings.HasPrefix(err.Error(), prefix) {
+			t.Errorf("LoadRev(%q) = %+v, %v; want %+v and ErrInvalidEntry starting with %q",
+				rev, l, err, valid, prefix)
+			continue
+		}
+		if _, ok := l.Get("bad"); ok {
+			t.Errorf("LoadRev(%q) has the invalid entry", rev)
+		}
+		if e, ok := l.Get("good"); !ok || e != valid[0] {
+			t.Errorf("LoadRev(%q).Get(good) = %+v, %t", rev, e, ok)
+		}
+	}
+	if l, err := lock.Load(ctx, g, dir); l != nil || !errors.Is(err, lock.ErrInvalidEntry) {
+		t.Errorf("Load = %+v, %v; want ErrInvalidEntry", l, err)
+	}
+	tests := map[string]error{
+		"nope":   git.ErrRefNotFound,
+		"HEAD~1": git.ErrRefNotFound,
+		"-x":     git.ErrInvalidRefName,
+	}
+	for rev, want := range tests {
+		l, err := lock.LoadRev(ctx, g, dir, rev)
+		if l != nil || !errors.Is(err, want) ||
+			!strings.HasPrefix(err.Error(), "read "+rev+":"+lock.File+": ") {
+			t.Errorf("LoadRev(%q) = %+v, %v; want %v", rev, l, err, want)
+		}
+	}
+
+	// A lock file committed as a symbolic link.
+	other := gittest.InitRepo(t, gittest.SHA1)
+	gittest.WriteFile(t, filepath.Join(other, "target"), sample)
+	if err := os.Symlink("target", filepath.Join(other, lock.File)); err != nil {
+		t.Fatal(err)
+	}
+	commitAll(t, other, "add a link")
+	for _, rev := range []string{"HEAD", ""} {
+		l, err := lock.LoadRev(ctx, g, other, rev)
+		if l != nil || !errors.Is(err, git.ErrNotRegularFile) {
+			t.Errorf("LoadRev(%q, link) = %+v, %v; want ErrNotRegularFile", rev, l, err)
+		}
+	}
+	// The file is missing from HEAD.
+	gittest.Git(t, other, "rm", "--quiet", lock.File)
+	commitAll(t, other, "remove the link")
+	l, err := lock.LoadRev(ctx, g, other, "HEAD")
+	if err != nil || l == nil || l.Entries() != nil {
+		t.Errorf("LoadRev(no lock file) = %+v, %v; want an empty lock", l, err)
+	}
+}
