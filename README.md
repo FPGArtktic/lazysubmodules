@@ -5,6 +5,7 @@
 
 [![CI](https://github.com/FPGArtktic/lazysubmodules/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/FPGArtktic/lazysubmodules/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/FPGArtktic/lazysubmodules/badges/coverage.json)](https://github.com/FPGArtktic/lazysubmodules/actions/workflows/ci.yml)
+[![Documentation](https://img.shields.io/readthedocs/lazysubmodules)](https://lazysubmodules.readthedocs.io)
 [![Release](https://img.shields.io/github/v/release/FPGArtktic/lazysubmodules?include_prereleases)](https://github.com/FPGArtktic/lazysubmodules/releases)
 [![Go version](https://img.shields.io/github/go-mod/go-version/FPGArtktic/lazysubmodules)](go.mod)
 [![Go Reference](https://pkg.go.dev/badge/github.com/FPGArtktic/lazysubmodules.svg)](https://pkg.go.dev/github.com/FPGArtktic/lazysubmodules)
@@ -37,6 +38,11 @@ and an interactive terminal user interface (TUI). The binary is called
   submodules.
 - **Scripting:** a stable, machine-readable status format, `verify` with
   optional signature checks, and distinct exit codes.
+
+The documentation site is <https://lazysubmodules.readthedocs.io>: the
+same material as this README, page by page, with task guides and an
+explanation of how the resolution works. This README stays the complete
+overview.
 
 ## Contents
 
