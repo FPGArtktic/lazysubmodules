@@ -4,12 +4,14 @@
 package core_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/FPGArtktic/lazysubmodules/internal/core"
 	"github.com/FPGArtktic/lazysubmodules/internal/git"
@@ -651,4 +653,92 @@ func TestUpdateNotRepository(t *testing.T) {
 			wantState(t, f.status("lib"), core.StateOK, "up to date")
 		})
 	}
+}
+
+// writeHook installs an executable hook in the repository of a submodule.
+func writeHook(t *testing.T, dir, name, script string) {
+	t.Helper()
+	hooks := gittest.Git(t, dir, "rev-parse", "--path-format=absolute", "--git-path", "hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(hooks, name)
+	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestUpdateRestoresAfterFailedHook checks that a submodule whose checkout
+// moved HEAD before git failed, in the post-checkout hook, is put back.
+func TestUpdateRestoresAfterFailedHook(t *testing.T) {
+	t.Parallel()
+	for name, hook := range map[string]string{
+		// The restoring checkout fails as well, but HEAD is back.
+		"always": "exit 1\n",
+		"target": `test "$2" != "$TARGET"` + "\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			f := newFixture(t, gittest.SHA1)
+			v100, v101 := f.commits[gittest.TagV100], f.commits[gittest.TagV101]
+			f.track("a", manifest.ModeTag, gittest.TagV100, gittest.TagV100, v100)
+			f.configure("a", manifest.ModeTag, gittest.TagV101)
+			f.super.Commit(t, "track v1.0.1")
+			lockFile := readFile(t, filepath.Join(f.super.Dir, lock.File))
+			writeHook(t, f.dir("a"), "post-checkout", "TARGET="+v101+"\n"+hook)
+
+			_, err := f.update(core.UpdateOptions{})
+			if _, ok := errors.AsType[*git.Error](err); !ok ||
+				!strings.HasPrefix(err.Error(), "a: git ") || strings.Contains(err.Error(), "roll back") {
+				t.Errorf("Update = %v, want only the failed checkout", err)
+			}
+			if got := headOf(t, f.dir("a")); got != v100 {
+				t.Errorf("a was not restored: HEAD %s, want %s", got, v100)
+			}
+			if got := readFile(t, filepath.Join(f.super.Dir, lock.File)); got != lockFile {
+				t.Errorf("lock file changed:\n%s", got)
+			}
+			wantStaged(t, f.super.Dir)
+			if st := f.status("a"); st.State != core.StateBehind {
+				t.Errorf("a: state %s (%s)", st.State, st.Reason)
+			}
+		})
+	}
+}
+
+// TestUpdateRestoresAfterInterruptedHook cancels an update while the
+// post-checkout hook of the moved submodule runs.
+func TestUpdateRestoresAfterInterruptedHook(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gittest.SHA1)
+	v100, v101 := f.commits[gittest.TagV100], f.commits[gittest.TagV101]
+	f.track("a", manifest.ModeTag, gittest.TagV100, gittest.TagV100, v100)
+	f.configure("a", manifest.ModeTag, gittest.TagV101)
+	f.super.Commit(t, "track v1.0.1")
+	marker := filepath.Join(t.TempDir(), "hook-started")
+	writeHook(t, f.dir("a"), "post-checkout", `if test "$2" = `+v101+"; then\n"+
+		"\t: >'"+marker+"'\n\texec sleep 30\nfi\n")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go func() {
+		for {
+			if _, err := os.Stat(marker); err == nil || ctx.Err() != nil {
+				cancel()
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}()
+	start := time.Now()
+	_, err := f.repo().Update(ctx, core.UpdateOptions{})
+	if !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "roll back") {
+		t.Errorf("Update = %v, want the canceled checkout", err)
+	}
+	if d := time.Since(start); d > 20*time.Second {
+		t.Errorf("Update took %v", d)
+	}
+	if got := headOf(t, f.dir("a")); got != v100 {
+		t.Errorf("a was not restored: HEAD %s, want %s", got, v100)
+	}
+	wantStaged(t, f.super.Dir)
 }

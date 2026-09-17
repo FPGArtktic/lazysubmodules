@@ -701,7 +701,9 @@ func (u *updater) apply(ctx context.Context) error {
 }
 
 // checkout moves every submodule whose HEAD is not the target and records
-// the moved ones in undo.
+// the moved ones in undo. A checkout can fail after it moved HEAD, when the
+// post-checkout hook fails or is stopped by a cancellation; such a
+// submodule is recorded as moved as well.
 func (u *updater) checkout(ctx context.Context, undo *applyUndo) error {
 	for _, s := range u.steps {
 		if s.head == s.change.New.Commit {
@@ -709,11 +711,22 @@ func (u *updater) checkout(ctx context.Context, undo *applyUndo) error {
 		}
 		err := u.repo.git.Checkout(ctx, s.loc.worktree, s.change.New.Commit, u.network())
 		if err != nil {
+			if !u.stayed(ctx, s) {
+				undo.moved = append(undo.moved, s)
+			}
 			return wrapName(s.change.Submodule.Name, err)
 		}
 		undo.moved = append(undo.moved, s)
 	}
 	return nil
+}
+
+// stayed reports whether the HEAD of a submodule is still the one before
+// the update. It reads HEAD even when ctx was canceled; when HEAD cannot be
+// read, the submodule counts as moved.
+func (u *updater) stayed(ctx context.Context, s *step) bool {
+	head, err := u.repo.head(context.WithoutCancel(ctx), s.loc.worktree)
+	return err == nil && head == s.head
 }
 
 // network returns the network mode of the checkouts: a partial clone may
@@ -802,14 +815,17 @@ func (a *applyUndo) restoreLockEntry(ctx context.Context, s *step) error {
 }
 
 // restore checks out the previous commit of moved submodules. A submodule
-// whose HEAD was unborn stays where it is.
+// whose HEAD was unborn stays where it is. A checkout that fails although
+// HEAD is back, because of its post-checkout hook, whose failure the
+// update reported already, counts as a success.
 func (u *updater) restore(ctx context.Context, moved []*step) error {
 	var errs []error
 	for _, s := range moved {
 		if s.head == "" {
 			continue
 		}
-		if err := u.repo.git.Checkout(ctx, s.loc.worktree, s.head, u.network()); err != nil {
+		err := u.repo.git.Checkout(ctx, s.loc.worktree, s.head, u.network())
+		if err != nil && !u.stayed(ctx, s) {
 			errs = append(errs, wrapName(s.change.Submodule.Name,
 				fmt.Errorf("restore %s: %w", abbrev(s.head), err)))
 		}
