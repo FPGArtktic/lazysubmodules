@@ -222,7 +222,7 @@ func (f *fakeBackend) Update(ctx context.Context, opts core.UpdateOptions) (core
 			continue
 		}
 		res.Changes = append(res.Changes, c)
-		if opts.Commit && recordsChange(c) {
+		if opts.Commit && c.RecordChanged() {
 			res.Commit = sha("c0ffee")
 		}
 		if opts.DryRun {

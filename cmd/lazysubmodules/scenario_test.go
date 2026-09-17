@@ -255,7 +255,7 @@ func (s *cliScenario) dryRun(t *testing.T) {
 				short7(c.UBoot.Branches["main"])+")\n"+
 				"would update theme: v1.0.0 ("+short7(c.Theme.Gitlink)+"), initialize\n"+
 				"sdk: up to date\n"+
-				"would commit \"manifest: update 3 submodules\"\n", "")
+				"would commit \"manifest: update 2 submodules\"\n", "")
 		inv.want(t, []string{"update", "--dry-run", "--fetch", "fresh", "broken"}, exitOK,
 			"would update fresh: v1.1.0 ("+short7(c.Fresh.Gitlink)+
 				") -> unknown until fetched, clone\n"+

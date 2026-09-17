@@ -72,7 +72,7 @@ func writeUpdate(w io.Writer, opts core.UpdateOptions, res core.UpdateResult, er
 	for _, ch := range res.Changes {
 		fmt.Fprintln(w, changeLine(ch, opts.DryRun))
 	}
-	recorded := slices.ContainsFunc(res.Changes, recordsChange)
+	recorded := slices.ContainsFunc(res.Changes, core.Change.RecordChanged)
 	switch {
 	case res.Commit != "":
 		fmt.Fprintf(w, "committed %s\n", res.Commit)
@@ -86,15 +86,6 @@ func writeUpdate(w io.Writer, opts core.UpdateOptions, res core.UpdateResult, er
 		subject, _, _ := strings.Cut(core.CommitMessage(res.Changes), "\n")
 		fmt.Fprintf(w, "would commit %q\n", clean(subject))
 	}
-}
-
-// recordsChange reports whether an update changes what the superproject
-// records for a submodule, which a commit then records: its gitlink, its
-// lock entry or its tracking keys. Initializing a submodule or checking out
-// its recorded commit changes nothing there.
-func recordsChange(c core.Change) bool {
-	c.Init, c.OldHead = false, c.New.Commit
-	return c.Changed()
 }
 
 // unknownTarget reports whether a dry run could not resolve the target of
@@ -130,7 +121,7 @@ func changeLine(c core.Change, dryRun bool) string {
 	case c.OldHead != "" && c.OldHead != c.OldGitlink && c.OldHead != c.New.Commit &&
 		c.New.Commit != "":
 		notes = append(notes, pick(dryRun, "HEAD is ", "HEAD was ")+short(c.OldHead))
-	case from == to:
+	case from == to && c.RecordChanged():
 		notes = append(notes, pick(dryRun, "record again", "recorded again"))
 	}
 	text = strings.Join(append([]string{text}, notes...), ", ")

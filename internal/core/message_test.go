@@ -58,73 +58,114 @@ func TestChanged(t *testing.T) {
 			New:        core.Resolution{Mode: manifest.ModeBranch, Ref: "main", Commit: shaA},
 		}
 	}
+	modified := func(modify func(c *core.Change)) core.Change {
+		c := unchanged("x")
+		modify(&c)
+		return c
+	}
+	// Changed, and RecordChanged: a Change built here has no other copy of
+	// the recorded .gitmodules keys than its Submodule.
 	for name, c := range map[string]struct {
-		change core.Change
-		want   bool
+		change            core.Change
+		changed, recorded bool
 	}{
-		"unchanged":         {unchanged("x"), false},
-		"branch key set":    {branch("main"), false},
-		"branch key absent": {branch(""), true},
-		"branch key stale":  {branch("develop"), true},
-		"tag with branch key": {func() core.Change {
-			c := unchanged("x")
+		"unchanged":         {unchanged("x"), false, false},
+		"branch key set":    {branch("main"), false, false},
+		"branch key absent": {branch(""), true, true},
+		"branch key stale":  {branch("develop"), true, true},
+		"tag with branch key": {modified(func(c *core.Change) {
 			c.Submodule.Branch = "main"
-			return c
-		}(), true},
-		"new target": {tagChange("x"), true},
-		"no lock": {func() core.Change {
-			c := unchanged("x")
+		}), true, true},
+		"new target": {tagChange("x"), true, true},
+		"no lock": {modified(func(c *core.Change) {
 			c.Old = nil
-			return c
-		}(), true},
-		"head moved": {func() core.Change {
-			c := unchanged("x")
+		}), true, true},
+		"head moved": {modified(func(c *core.Change) {
 			c.OldHead = shaB
-			return c
-		}(), true},
-		"gitlink moved": {func() core.Change {
-			c := unchanged("x")
+		}), true, false},
+		"gitlink moved": {modified(func(c *core.Change) {
 			c.OldGitlink = shaB
-			return c
-		}(), true},
-		"no gitlink": {func() core.Change {
-			c := unchanged("x")
+		}), true, true},
+		"no gitlink": {modified(func(c *core.Change) {
 			c.OldGitlink = ""
-			return c
-		}(), true},
-		"unborn head": {func() core.Change {
-			c := unchanged("x")
+		}), true, true},
+		"unborn head": {modified(func(c *core.Change) {
 			c.OldHead = ""
-			return c
-		}(), true},
-		"lock mode": {func() core.Change {
-			c := unchanged("x")
+		}), true, false},
+		"lock mode": {modified(func(c *core.Change) {
 			c.Old.Mode = manifest.ModeTagPattern
-			return c
-		}(), true},
-		"lock ref": {func() core.Change {
-			c := unchanged("x")
+		}), true, true},
+		"lock ref": {modified(func(c *core.Change) {
 			c.Old.Ref = "v0"
-			return c
-		}(), true},
-		"lock commit": {func() core.Change {
-			c := unchanged("x")
+		}), true, true},
+		"lock commit": {modified(func(c *core.Change) {
 			c.Old.Commit = shaB
-			return c
-		}(), true},
-		"initialized": {func() core.Change {
-			c := unchanged("x")
-			c.Init = true
-			return c
-		}(), true},
-		"unknown target": {func() core.Change {
-			c := unchanged("x")
+		}), true, true},
+		"lock name": {modified(func(c *core.Change) {
+			c.Old.Name = "y"
+		}), false, false},
+		"initialized": {modified(func(c *core.Change) {
+			c.Init, c.OldHead = true, ""
+		}), true, false},
+		"cloned": {modified(func(c *core.Change) {
+			c.Init, c.Clone, c.OldHead = true, true, ""
+		}), true, false},
+		"unknown target": {modified(func(c *core.Change) {
 			c.New = core.Resolution{}
-			return c
-		}(), true},
+		}), true, true},
+		"unknown target of a clone": {modified(func(c *core.Change) {
+			c.Old, c.OldHead, c.OldGitlink, c.New = nil, "", "", core.Resolution{}
+			c.Init, c.Clone = true, true
+		}), true, true},
 	} {
-		if got := c.change.Changed(); got != c.want {
-			t.Errorf("%s: Changed() = %v, want %v", name, got, c.want)
+		if got := c.change.Changed(); got != c.changed {
+			t.Errorf("%s: Changed() = %v, want %v", name, got, c.changed)
+		}
+		if got := c.change.RecordChanged(); got != c.recorded {
+			t.Errorf("%s: RecordChanged() = %v, want %v", name, got, c.recorded)
+		}
+	}
+}
+
+func TestCommitMessageRecordedOnly(t *testing.T) {
+	t.Parallel()
+	initialized := unchanged("theme")
+	initialized.Init, initialized.OldHead = true, ""
+	cloned := unchanged("fresh")
+	cloned.Init, cloned.Clone, cloned.OldHead = true, true, ""
+	checkedOut := unchanged("moved")
+	checkedOut.OldHead = shaB
+	single := "manifest: update kernel to v6.6.9\n\n" +
+		"Tracking mode: tag-pattern v6.6.*\n" +
+		"Old: a1b2c3d4e5f6 (v6.6.8)\n" +
+		"New: e4f5a6b7c8d9 (v6.6.9)\n"
+	for name, c := range map[string]struct {
+		changes []core.Change
+		want    string
+	}{
+		"initialized":    {[]core.Change{initialized}, ""},
+		"cloned":         {[]core.Change{cloned}, ""},
+		"checked out":    {[]core.Change{checkedOut}, ""},
+		"all unrecorded": {[]core.Change{initialized, cloned, checkedOut}, ""},
+		"with one recorded": {[]core.Change{initialized, tagChange("kernel"), cloned,
+			checkedOut}, single},
+		"with two recorded": {[]core.Change{initialized, tagChange("kernel"), cloned,
+			tagChange("u-boot")}, "manifest: update 2 submodules\n\n" +
+			"Submodule \"kernel\":\n" +
+			"  Tracking mode: tag-pattern v6.6.*\n" +
+			"  Old: a1b2c3d4e5f6 (v6.6.8)\n" +
+			"  New: e4f5a6b7c8d9 (v6.6.9)\n\n" +
+			"Submodule \"u-boot\":\n" +
+			"  Tracking mode: tag-pattern v6.6.*\n" +
+			"  Old: a1b2c3d4e5f6 (v6.6.8)\n" +
+			"  New: e4f5a6b7c8d9 (v6.6.9)\n"},
+	} {
+		got := core.CommitMessage(c.changes)
+		if got != c.want {
+			t.Errorf("%s: CommitMessage =\n%s\nwant\n%s", name, got, c.want)
+		}
+		if got != "" {
+			lintMessage(t, got+"\n"+signOff)
 		}
 	}
 }
@@ -324,12 +365,15 @@ func TestCommitMessageGitlint(t *testing.T) {
 	}
 	fresh := tagChange("fresh")
 	fresh.Old, fresh.OldHead, fresh.Init = nil, "", true
+	initialized := unchanged("theme")
+	initialized.Init, initialized.OldHead = true, ""
 	for name, changes := range map[string][]core.Change{
-		"single":     {tagChange("kernel")},
-		"multiple":   {tagChange("kernel"), fresh, tagChange("u-boot")},
-		"long name":  {tagChange(strings.Repeat("k", 70))},
-		"wip":        {tagChange("wip")},
-		"colon name": {tagChange("a: b")},
+		"single":      {tagChange("kernel")},
+		"multiple":    {tagChange("kernel"), fresh, initialized, tagChange("u-boot")},
+		"initialized": {initialized, tagChange("kernel")},
+		"long name":   {tagChange(strings.Repeat("k", 70))},
+		"wip":         {tagChange("wip")},
+		"colon name":  {tagChange("a: b")},
 	} {
 		file := filepath.Join(t.TempDir(), "msg")
 		msg := core.CommitMessage(changes) + "\n" + signOff + "\n"

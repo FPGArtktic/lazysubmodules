@@ -190,6 +190,11 @@ func TestWriteUpdate(t *testing.T) {
 		Init: true, New: v100}
 	checkoutOnly := initOnly
 	checkoutOnly.Init, checkoutOnly.OldHead = false, commitB
+	branch := manifest.ModeBranch
+	uBoot := core.Change{Submodule: manifest.Submodule{Name: "u-boot", Path: "u-boot",
+		Mode: branch, Ref: "main", Branch: "main"},
+		Old: entry("u-boot", branch, "main", commitA), OldHead: commitA, OldGitlink: commitA,
+		New: core.Resolution{Mode: branch, Ref: "main", Commit: commitB}}
 	failure := errors.New("refused")
 	const (
 		upToDateLine = "sdk: up to date\n"
@@ -237,6 +242,19 @@ func TestWriteUpdate(t *testing.T) {
 		{"initialization", core.UpdateOptions{Commit: true},
 			core.UpdateResult{Changes: []core.Change{initOnly}}, nil,
 			"theme: v1.0.0 (a1b2c3d), initialized\nnothing to commit\n"},
+		// The subject names only what the commit records.
+		{"dry run of a commit with an initialization", core.UpdateOptions{DryRun: true,
+			Commit: true},
+			core.UpdateResult{Changes: []core.Change{initOnly, changed, checkoutOnly}}, nil,
+			"would update theme: v1.0.0 (a1b2c3d), initialize\n" + dryLine +
+				"would update theme: v1.0.0 (a1b2c3d), HEAD is e4f5a6b\n" +
+				`would commit "manifest: update kernel to v6.6.9"` + "\n"},
+		{"dry run of a commit of two with an initialization", core.UpdateOptions{
+			DryRun: true, Commit: true},
+			core.UpdateResult{Changes: []core.Change{changed, initOnly, uBoot}}, nil,
+			dryLine + "would update theme: v1.0.0 (a1b2c3d), initialize\n" +
+				"would update u-boot: main (a1b2c3d) -> main (e4f5a6b)\n" +
+				`would commit "manifest: update 2 submodules"` + "\n"},
 	}
 	for _, tt := range tests {
 		var out bytes.Buffer

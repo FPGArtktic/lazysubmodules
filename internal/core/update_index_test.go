@@ -190,13 +190,15 @@ func TestUpdateRestagesTracking(t *testing.T) {
 		gittest.WriteFile(t, lockFile, content)
 
 		// HEAD is up to date, so nothing is committed, but the index is
-		// repaired.
+		// repaired, and the change says so.
 		res := f.mustUpdate(core.UpdateOptions{Commit: true})
-		if c := oneChange(t, res); c.Changed() || res.Commit != "" {
+		if c := oneChange(t, res); !c.Changed() || c.RecordChanged() || !c.RestoresIndex() ||
+			c.RestoredFiles() != nil || res.Commit != "" {
 			t.Errorf("Update(commit) = %+v", res)
 		}
 		wantStaged(t, f.super.Dir)
 		indexMatchesWorktree(t, f.super.Dir, lock.File)
+		wantUpToDate(t, f, core.UpdateOptions{Commit: true})
 	})
 
 	for _, fetch := range []bool{false, true} {

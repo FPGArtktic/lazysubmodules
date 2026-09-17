@@ -72,31 +72,121 @@ type Change struct {
 	// Clone reports that the initialization needs a clone, which only
 	// happens with UpdateOptions.Fetch.
 	Clone bool
-	// stale reports that Update found a copy of the tracking configuration
-	// that the other fields do not show and that disagrees with New: the
-	// lock entry in the working tree, or the tracking keys in the
-	// .gitmodules that the superproject recorded (see Old).
-	stale bool
+	// staleLock reports that Update found a lock entry in the working tree
+	// that disagrees with New.
+	staleLock bool
+	// staleIndex reports that the gitlink, lock entry or tracking keys in
+	// the index differ from those that Update stages: New, and the lsm-mode
+	// and lsm-ref of the working tree with the native branch key they need.
+	// Without UpdateOptions.Commit, Old and OldGitlink come from the index,
+	// so RecordChanged is true then as well.
+	staleIndex bool
+	// keys tells how the tracking keys that the superproject recorded in
+	// .gitmodules (see Old) compare with the working tree and New.
+	keys keyState
 }
+
+// keyState tells how the lsm-mode, lsm-ref and native branch key that the
+// superproject recorded for a submodule compare with the working tree and
+// the target of an update.
+type keyState uint8
+
+const (
+	// keysOfSubmodule means that nothing was compared: Change.Submodule
+	// stands for the recorded keys, as in a Change that Update did not
+	// return.
+	keysOfSubmodule keyState = iota
+	// keysAgree means that the recorded keys are those of the working tree,
+	// with the native branch key that the tracking mode needs.
+	keysAgree
+	// keysDiffer means that the recorded keys differ from those, or that
+	// the superproject recorded none.
+	keysDiffer
+)
 
 // Changed reports whether the update modifies anything for the submodule.
 //
 // Context: any; a Change that Update did not return has no copies of the
 // tracking configuration other than its fields.
-// Return: true when the submodule is initialized; when its checked-out
-// commit, or the commit or lock entry that the superproject recorded
-// (OldGitlink and Old), differs from New; when the native branch key in
-// .gitmodules does not match the tracking mode; or, for a Change returned
-// by Update, when the lock file in the working tree, or the lsm-mode,
-// lsm-ref or native branch key that the superproject recorded in
-// .gitmodules, does not match the working tree and New.
+// Return: true when RecordChanged is true; when the submodule is
+// initialized; when its checked-out commit differs from New; when the
+// native branch key in the working tree copy of .gitmodules does not match
+// the tracking mode; or, for a Change returned by Update, when the lock
+// file in the working tree does not record New, or when the gitlink, lock
+// entry or tracking keys in the index differ from those that the update
+// stages (see RestoresIndex).
 func (c Change) Changed() bool {
-	if c.Init || c.stale || c.Old == nil || c.OldHead != c.New.Commit ||
-		c.OldGitlink != c.New.Commit {
+	return c.Init || c.staleLock || c.staleIndex || c.OldHead != c.New.Commit ||
+		staleBranchKey(c.Submodule) || c.RecordChanged()
+}
+
+// RestoredFiles lists the files whose working tree copy the update rewrites
+// to what the superproject records for the submodule already, which is New:
+// .gitmodules when its native branch key does not follow the tracking mode,
+// and the lock file when its entry does not record New. The lsm-mode and
+// lsm-ref keys are never rewritten, since the update follows them.
+//
+// Context: any; a Change that Update did not return lists no lock file.
+// Return: the file names relative to the superproject root, .gitmodules
+// first; nil when RecordChanged is true, since the files then change what
+// the superproject records, or when both copies record New.
+func (c Change) RestoredFiles() []string {
+	if c.RecordChanged() {
+		return nil
+	}
+	var files []string
+	if staleBranchKey(c.Submodule) {
+		files = append(files, manifest.File)
+	}
+	if c.staleLock {
+		files = append(files, lock.File)
+	}
+	return files
+}
+
+// RestoresIndex reports whether an update with UpdateOptions.Commit
+// discards a change staged for the submodule: the index records another
+// gitlink, lock entry or tracking keys for it than HEAD, which records New
+// already, and the update stages what the working tree and HEAD record in
+// its place. The index copy of .gitmodules or the lock file also counts as
+// such a change when it cannot be read, such as a symbolic link.
+//
+// Context: any; a Change that Update did not return reports false.
+// Return: true when the index does not record New while RecordChanged is
+// false.
+func (c Change) RestoresIndex() bool {
+	return c.staleIndex && !c.RecordChanged()
+}
+
+// RecordChanged reports whether the update changes what the superproject
+// records for the submodule: its gitlink, its lock entry, or its lsm-mode,
+// lsm-ref or native branch key in .gitmodules. The records compared are
+// those that Old and OldGitlink come from: the index, or, with
+// UpdateOptions.Commit, HEAD. Only such a change is new in the index or
+// the commit, and CommitMessage describes only such changes. Initializing
+// or cloning a submodule, checking out the commit that the superproject
+// records, or rewriting a working tree copy of .gitmodules or the lock file,
+// or with UpdateOptions.Commit the index, to what the superproject records
+// changes nothing there.
+//
+// Context: any; for a Change that Update did not return, Submodule stands
+// for the recorded .gitmodules keys.
+// Return: true when there is no Old; when OldGitlink, or the mode, ref or
+// commit of Old, differs from New, which includes an unknown target of a
+// dry run; or when the recorded tracking keys differ from the working tree
+// copy or lack the native branch key that the tracking mode needs.
+func (c Change) RecordChanged() bool {
+	if c.Old == nil || c.OldGitlink != c.New.Commit || c.Old.Mode != c.New.Mode ||
+		c.Old.Ref != c.New.Ref || c.Old.Commit != c.New.Commit {
 		return true
 	}
-	return c.Old.Mode != c.New.Mode || c.Old.Ref != c.New.Ref ||
-		c.Old.Commit != c.New.Commit || staleBranchKey(c.Submodule)
+	switch c.keys {
+	case keysAgree:
+		return false
+	case keysDiffer:
+		return true
+	}
+	return staleBranchKey(c.Submodule)
 }
 
 // entry returns the lock entry that records New.
@@ -142,11 +232,17 @@ type UpdateResult struct {
 // records counts as well: a submodule whose gitlink, lock entry, lsm-mode,
 // lsm-ref or native branch key in the index differs from the working tree
 // and the target is staged again, so an update whose staging was undone or
-// failed can be repeated. The two files are staged as a whole, including
-// changes that other submodules have in them. With opts.Commit, one commit
-// is created with the message of CommitMessage, and the changes are
-// computed against HEAD instead of the index, so an update staged before is
-// committed too. When no submodule changed, nothing is staged or committed.
+// failed can be repeated; Change.Changed reports this. The two files are
+// staged as a whole, including changes that other submodules have in them.
+// With opts.Commit, one commit is created with the message of
+// CommitMessage, and the changes are computed against HEAD instead of the
+// index, so an update staged before is committed too, and a different
+// change staged for a submodule whose target HEAD records already is
+// discarded (see Change.RestoresIndex). When no submodule changed, nothing
+// is staged or committed;
+// when no submodule changes what HEAD records (see Change.RecordChanged),
+// such as when submodules are only initialized or checked out at their
+// recorded commits, nothing is committed.
 //
 // A submodule that is not initialized is initialized first: offline when
 // its repository exists in the git directory of the superproject, or else
@@ -278,26 +374,39 @@ func newStep(sub manifest.Submodule, lk *lock.Lock, index, recorded snapshot) *s
 	return s
 }
 
-// setTarget records the resolved target and whether the copies of the
-// tracking configuration that Change does not show agree with it.
+// setTarget records the resolved target and whether the copies that
+// Change does not show agree with it: the lock entry in the working tree,
+// the gitlink, lock entry and tracking keys in the index, and the tracking
+// keys that the update replaces.
 func (s *step) setTarget(res Resolution) {
 	s.change.New, s.resolved = res, true
-	s.change.stale = !sameEntry(s.written, s.change.entry()) || !s.agrees(s.recorded)
+	s.change.staleLock = !sameEntry(s.written, s.change.entry())
+	s.change.staleIndex = s.loc.gitlink != res.Commit || !s.agrees(s.index)
+	s.change.keys = keysAgree
+	if !s.sameKeys(s.recorded) {
+		s.change.keys = keysDiffer
+	}
 }
 
 // agrees reports whether a copy of the tracking configuration records the
-// target: the lock entry of New, and the lsm-mode and lsm-ref of the
-// working tree with the native branch key they need.
+// target: the lock entry of New, and the tracking keys (see sameKeys).
 func (s *step) agrees(t tracking) bool {
-	sub := s.change.Submodule
-	return sameEntry(t.entry, s.change.entry()) && t.sub != nil &&
-		t.sub.Mode == sub.Mode && t.sub.Ref == sub.Ref && !staleBranchKey(*t.sub)
+	return sameEntry(t.entry, s.change.entry()) && s.sameKeys(t)
 }
 
-// pending reports whether apply must write or stage anything for the step:
-// the change modifies something, or the index does not record the target.
+// sameKeys reports whether a copy of .gitmodules records the lsm-mode and
+// lsm-ref of the working tree, with the native branch key they need.
+func (s *step) sameKeys(t tracking) bool {
+	sub := s.change.Submodule
+	return t.sub != nil && t.sub.Mode == sub.Mode && t.sub.Ref == sub.Ref &&
+		!staleBranchKey(*t.sub)
+}
+
+// pending reports whether apply must write or stage anything for the step,
+// which has a resolved target: the change modifies something, which
+// includes an index that does not record the target (see setTarget).
 func (s *step) pending() bool {
-	return s.change.Changed() || s.loc.gitlink != s.change.New.Commit || !s.agrees(s.index)
+	return s.change.Changed()
 }
 
 // changes returns the changes of all steps.
@@ -834,7 +943,7 @@ func (u *updater) restore(ctx context.Context, moved []*step) error {
 }
 
 // commit records the staged update. Nothing is committed when no
-// submodule changed or nothing is staged.
+// submodule changes what HEAD records or nothing is staged.
 func (u *updater) commit(ctx context.Context, changes []Change) (string, error) {
 	r := u.repo
 	msg := CommitMessage(changes)

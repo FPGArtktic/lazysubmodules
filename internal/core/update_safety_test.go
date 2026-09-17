@@ -260,9 +260,17 @@ func TestUpdateCommitRestagesStaleGitlink(t *testing.T) {
 	f.checkout("lib", v101)
 
 	res := f.mustUpdate(core.UpdateOptions{Commit: true})
-	if len(res.Changes) != 2 || res.Changes[0].Changed() || !res.Changes[1].Changed() ||
-		res.Commit == "" {
+	if len(res.Changes) != 2 || res.Commit == "" {
 		t.Fatalf("Update(commit) = %+v", res)
+	}
+	// lib records nothing new, but its staged gitlink is discarded.
+	if c := res.Changes[0]; !c.Changed() || c.RecordChanged() || !c.RestoresIndex() ||
+		c.RestoredFiles() != nil {
+		t.Errorf("lib: %+v", c)
+	}
+	if c := res.Changes[1]; !c.Changed() || !c.RecordChanged() || c.RestoresIndex() ||
+		c.RestoredFiles() != nil {
+		t.Errorf("lib2: %+v", c)
 	}
 	if msg := headMessage(t, f.super.Dir); !strings.HasPrefix(msg,
 		"manifest: update lib2 to v1.0.1\n") {

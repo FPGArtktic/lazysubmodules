@@ -397,7 +397,7 @@ func firstChange(res core.UpdateResult) (core.Change, bool) {
 func updatePrompt(name string, c core.Change, commit, staged bool) []string {
 	lines := []string{"Update " + clean(name) + ": " + changeText(c)}
 	switch {
-	case !recordsChange(c):
+	case !c.RecordChanged():
 		what := "staged"
 		if commit {
 			what = "committed"
@@ -435,7 +435,7 @@ func changeText(c core.Change) string {
 	case c.OldHead != "" && c.OldHead != c.OldGitlink && c.OldHead != c.New.Commit &&
 		c.New.Commit != "":
 		text += ", HEAD is " + shortCommit(c.OldHead)
-	case from == to && recordsChange(c):
+	case from == to && c.RecordChanged():
 		text += ", record again"
 	}
 	return text
@@ -467,15 +467,6 @@ func newSide(c core.Change) string {
 	return resolutionText(c.New)
 }
 
-// recordsChange reports whether an update changes what the superproject
-// records for a submodule, which is then staged or committed: its gitlink,
-// its lock entry or its tracking keys. Initializing a submodule or checking
-// out its recorded commit changes nothing there.
-func recordsChange(c core.Change) bool {
-	c.Init, c.OldHead = false, c.New.Commit
-	return c.Changed()
-}
-
 // updateOp updates one submodule without fetching.
 func (m Model) updateOp(name string, commit bool) operation {
 	b := m.backend
@@ -502,7 +493,7 @@ func updateText(name string, res core.UpdateResult, commit bool) string {
 		text = "cloned at " + target
 	case c.Init:
 		text = "initialized at " + target
-	case !recordsChange(c):
+	case !c.RecordChanged():
 		text = "checked out " + target
 	case oldSide(c) == newSide(c):
 		text = target + " recorded again"
@@ -514,7 +505,7 @@ func updateText(name string, res core.UpdateResult, commit bool) string {
 		text += ", committed " + shortCommit(res.Commit)
 	case commit:
 		text += ", nothing to commit"
-	case recordsChange(c):
+	case c.RecordChanged():
 		text += ", staged"
 	}
 	return clean(name) + ": " + text

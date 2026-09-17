@@ -32,13 +32,15 @@ const (
 
 // CommitMessage returns the message of the commit that records changes.
 //
-// Only changed submodules (see Change.Changed) are described. For one
-// submodule, the subject is "manifest: update <name> to <ref>", where ref
-// is the new tag or branch, or the abbreviated commit in commit mode. A
-// subject that would be longer than 75 characters or break another subject
-// rule (trailing punctuation or white space, the word WIP) becomes
-// "manifest: update <name>", or else "manifest: update 1 submodule". The
-// body reads:
+// The message describes what the commit changes: only submodules whose
+// gitlink, lock entry or tracking keys change (see Change.RecordChanged)
+// are listed, not those that an update only initializes, clones or checks
+// out at their recorded commit. For one submodule, the subject is
+// "manifest: update <name> to <ref>", where ref is the new tag or branch,
+// or the abbreviated commit in commit mode. A subject that would be longer
+// than 75 characters or break another subject rule (trailing punctuation
+// or white space, the word WIP) becomes "manifest: update <name>", or else
+// "manifest: update 1 submodule". The body reads:
 //
 //	Tracking mode: <mode> <configured ref>
 //	Old: <commit> (<ref>)
@@ -60,11 +62,12 @@ const (
 //
 // Context: any; the message has no Signed-off-by trailer, which "git commit
 // -s" adds.
-// Return: the message, ending with a newline, or "" when nothing changed.
+// Return: the message, ending with a newline, or "" when no submodule
+// changes what the superproject records.
 func CommitMessage(changes []Change) string {
 	var changed []Change
 	for _, c := range changes {
-		if c.Changed() {
+		if c.RecordChanged() {
 			changed = append(changed, c)
 		}
 	}

@@ -269,16 +269,11 @@ func wantNestedCommit(t *testing.T, g *git.Runner, n *gittest.NestedSuper, commi
 		t.Fatalf("commit %q, HEAD %s", commit, headOf(t, n.Dir))
 	}
 	v100, v101 := n.Lib.Tags[gittest.TagV100], n.Lib.Tags[gittest.TagV101]
-	later := n.Later.Gitlink[:12]
-	want := "manifest: update 2 submodules\n\n" +
-		"Submodule \"lib\":\n" +
-		"  Tracking mode: tag-pattern v1.*\n" +
-		"  Old: " + v100[:12] + " (v1.0.0)\n" +
-		"  New: " + v101[:12] + " (v1.0.1)\n\n" +
-		"Submodule \"later\":\n" +
-		"  Tracking mode: branch stable\n" +
-		"  Old: " + later + " (stable)\n" +
-		"  New: " + later + " (stable)\n\n" + signOff
+	// The clone of later changes nothing that the commit records.
+	want := "manifest: update lib to v1.0.1\n\n" +
+		"Tracking mode: tag-pattern v1.*\n" +
+		"Old: " + v100[:12] + " (v1.0.0)\n" +
+		"New: " + v101[:12] + " (v1.0.1)\n\n" + signOff
 	if got := headMessage(t, n.Dir); got != want {
 		t.Errorf("commit message:\n%s\nwant\n%s", got, want)
 	}
