@@ -156,6 +156,31 @@ func TestAddModes(t *testing.T) {
 	}
 }
 
+func TestAddStaleLockEntry(t *testing.T) {
+	t.Parallel()
+	f := newAddFixture(t, gittest.SHA1)
+	v100 := f.commits[gittest.TagV100]
+	target := core.Resolution{Mode: manifest.ModeTag, Ref: gittest.TagV100, Commit: v100}
+	// The index records an entry for the path, and the working tree
+	// another one.
+	stale := lock.Entry{Name: "new", Mode: manifest.ModeTag, Ref: "v0",
+		Commit: f.commits[gittest.TagRC1]}
+	f.lock(stale.Name, stale.Mode, stale.Ref, stale.Commit)
+	gittest.Git(t, f.super.Dir, "add", lock.File)
+	f.lock("new", manifest.ModeBranch, "main", f.commits[gittest.TagV200RC])
+
+	change, err := f.addSub("new", manifest.ModeTag, gittest.TagV100, false)
+	if err != nil || change.Old == nil || *change.Old != stale || change.New != target ||
+		!change.Changed() {
+		t.Errorf("Add = %+v, %v; want the old entry %+v", change, err, stale)
+	}
+	want := lock.Entry{Name: "new", Mode: manifest.ModeTag, Ref: gittest.TagV100, Commit: v100}
+	if got := lockOf(t, f, "new"); got == nil || *got != want {
+		t.Errorf("lock entry %+v, want %+v", got, want)
+	}
+	indexMatchesWorktree(t, f.super.Dir, lock.File)
+}
+
 func TestAddRefused(t *testing.T) {
 	t.Parallel()
 	f := newAddFixture(t, gittest.SHA1)

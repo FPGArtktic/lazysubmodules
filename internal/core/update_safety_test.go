@@ -153,23 +153,26 @@ func TestUpdateStagedUpdate(t *testing.T) {
 		f.track("lib", manifest.ModeTagPattern, "v1.*", gittest.TagV100, v100)
 		return f, v100, v101
 	}
-	locked := func(commit string) lock.Entry {
-		return lock.Entry{Name: "lib", Mode: manifest.ModeTagPattern, Ref: gittest.TagV101,
-			Commit: commit}
+	// committed is the lock entry that HEAD records.
+	committed := func(f *fixture) lock.Entry {
+		return lock.Entry{Name: "lib", Mode: manifest.ModeTagPattern, Ref: gittest.TagV100,
+			Commit: f.commits[gittest.TagV100]}
 	}
 
 	t.Run("stage then commit", func(t *testing.T) {
 		t.Parallel()
 		f, v100, v101 := setup(t)
 		old := headOf(t, f.super.Dir)
-		if c := oneChange(t, f.mustUpdate(core.UpdateOptions{})); c.OldGitlink != v100 {
+		if c := oneChange(t, f.mustUpdate(core.UpdateOptions{})); c.OldGitlink != v100 ||
+			c.Old == nil || *c.Old != committed(f) {
 			t.Errorf("staging update: %+v", c)
 		}
 		wantStaged(t, f.super.Dir, lock.File, "lib")
+		// The commit replaces HEAD, so the old values are those of HEAD.
 		res := f.mustUpdate(core.UpdateOptions{Commit: true})
 		c := oneChange(t, res)
 		if !c.Changed() || c.OldGitlink != v100 || c.OldHead != v101 || c.Old == nil ||
-			*c.Old != locked(v101) || res.Commit == "" || res.Commit != headOf(t, f.super.Dir) {
+			*c.Old != committed(f) || res.Commit == "" || res.Commit != headOf(t, f.super.Dir) {
 			t.Fatalf("Update(commit) = %+v", res)
 		}
 		if parent := gittest.Git(t, f.super.Dir, "rev-parse", "HEAD^"); parent != old {
@@ -177,7 +180,7 @@ func TestUpdateStagedUpdate(t *testing.T) {
 		}
 		want := "manifest: update lib to v1.0.1\n\n" +
 			"Tracking mode: tag-pattern v1.*\n" +
-			"Old: " + v100[:12] + "\n" +
+			"Old: " + v100[:12] + " (v1.0.0)\n" +
 			"New: " + v101[:12] + " (v1.0.1)\n\n" + signOff
 		if msg := headMessage(t, f.super.Dir); msg != want {
 			t.Errorf("commit message:\n%s\nwant\n%s", msg, want)
@@ -199,7 +202,7 @@ func TestUpdateStagedUpdate(t *testing.T) {
 		wantStaged(t, f.super.Dir)
 		c := oneChange(t, f.mustUpdate(core.UpdateOptions{}))
 		if !c.Changed() || c.OldGitlink != v100 || c.OldHead != v101 || c.Old == nil ||
-			*c.Old != locked(v101) {
+			*c.Old != committed(f) {
 			t.Errorf("update after reset: %+v", c)
 		}
 		wantStaged(t, f.super.Dir, lock.File, "lib")

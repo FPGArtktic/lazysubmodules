@@ -67,12 +67,17 @@ type AddOptions struct {
 //
 // Context: uses the network to clone; credentials come from the git
 // configuration.
-// Return: the change, whose Submodule is the new configuration and whose
-// Init and Clone are set; an error wrapping ErrInvalidArgument for an
-// invalid URL, path, mode or ref; an error wrapping ErrPathExists; an error
-// wrapping ErrMissingRef when the ref does not resolve in the clone;
-// *git.Error; or another error. After a rollback, the error of the failed
-// step is joined with the errors of the rollback, if any.
+// Return: the change, whose Submodule is the new configuration, whose Old
+// is the lock entry that the index recorded for the path before (normally
+// none), and whose Init and Clone are set; an error wrapping
+// ErrInvalidArgument for an invalid URL, path, mode or ref; an error
+// wrapping ErrPathExists; an error wrapping ErrMissingRef when the ref does
+// not resolve in the clone; an error from reading the working tree copy of
+// .gitmodules or the lock file, before anything is cloned, such as one
+// wrapping git.ErrNotRegularFile for a copy that is not a regular file,
+// manifest.ErrInvalidMode or lock.ErrInvalidEntry; *git.Error; or an error
+// from inspecting, creating or removing files. After a rollback, the error
+// of the failed step is joined with the errors of the rollback, if any.
 func (r *Repo) Add(ctx context.Context, opts AddOptions) (Change, error) {
 	p, err := r.checkAdd(ctx, opts)
 	if err != nil {
@@ -151,6 +156,11 @@ func (r *Repo) checkNewPath(ctx context.Context, p string) error {
 // add performs the steps of Add after validation.
 func (r *Repo) add(ctx context.Context, opts AddOptions, undo *addUndo) (Change, error) {
 	p := undo.path
+	// The old lock entry is the one of the index, as for an update.
+	index, err := r.loadSnapshot(ctx, "")
+	if err != nil {
+		return Change{}, err
+	}
 	branch := ""
 	if opts.Mode == manifest.ModeBranch {
 		branch = opts.Ref
@@ -178,7 +188,8 @@ func (r *Repo) add(ctx context.Context, opts AddOptions, undo *addUndo) (Change,
 	if err := r.git.Checkout(ctx, dir, res.Commit, git.Online); err != nil {
 		return Change{}, err
 	}
-	change := Change{Submodule: sub, Old: undo.oldEntry, New: res, Init: true, Clone: true}
+	change := Change{Submodule: sub, Old: index.tracking(p).entry, New: res, Init: true,
+		Clone: true}
 	undo.lockWritten = true
 	if err := lock.Write(ctx, r.git, r.root, change.entry()); err != nil {
 		return Change{}, err

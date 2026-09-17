@@ -117,19 +117,18 @@ func wantCommitStaged(t *testing.T, f *fixture, ref, oldGitlink string, target c
 	t.Helper()
 	res := f.mustUpdate(core.UpdateOptions{Commit: true})
 	change := oneChange(t, res)
-	if !change.Changed() || change.OldGitlink != oldGitlink || change.New != target ||
-		res.Commit == "" || res.Commit != headOf(t, f.super.Dir) {
+	if !change.Changed() || change.OldGitlink != oldGitlink || change.Old != nil ||
+		change.New != target || res.Commit == "" || res.Commit != headOf(t, f.super.Dir) {
 		t.Fatalf("update with commit: %+v", res)
 	}
 	shown, note := target.Ref, " ("+target.Ref+")"
 	if target.Mode == manifest.ModeCommit {
 		shown, note = target.Commit[:12], ""
 	}
-	// The lock entry records the new commit already, so the old ref is
-	// unknown.
+	// The lock file in HEAD has no entry yet.
 	want := "manifest: update lib to " + shown + "\n\n" +
 		"Tracking mode: " + string(target.Mode) + " " + ref + "\n" +
-		"Old: " + oldGitlink[:12] + "\n" +
+		"Old: " + oldGitlink[:12] + " (unlocked)\n" +
 		"New: " + target.Commit[:12] + note + "\n\n" + signOff
 	if msg := headMessage(t, f.super.Dir); msg != want {
 		t.Errorf("commit message:\n%s\nwant\n%s", msg, want)

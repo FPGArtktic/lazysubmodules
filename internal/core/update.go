@@ -46,10 +46,12 @@ type UpdateOptions struct {
 
 // Change describes the update of one submodule.
 type Change struct {
-	// Submodule is the configuration from .gitmodules before the update.
+	// Submodule is the configuration from .gitmodules in the working tree
+	// before the update.
 	Submodule manifest.Submodule
-	// Old is the lock entry before the update, as the lock file in the
-	// working tree records it, or nil.
+	// Old is the lock entry that the superproject recorded for the
+	// submodule before the update, like OldGitlink: in the index, or, with
+	// UpdateOptions.Commit, in HEAD. It is nil when there is none.
 	Old *lock.Entry
 	// OldHead is the commit checked out before the update; empty when the
 	// submodule was not initialized or its HEAD was unborn.
@@ -70,17 +72,27 @@ type Change struct {
 	// Clone reports that the initialization needs a clone, which only
 	// happens with UpdateOptions.Fetch.
 	Clone bool
+	// stale reports that Update found a copy of the tracking configuration
+	// that the other fields do not show and that disagrees with New: the
+	// lock entry in the working tree, or the tracking keys in the
+	// .gitmodules that the superproject recorded (see Old).
+	stale bool
 }
 
 // Changed reports whether the update modifies anything for the submodule.
 //
-// Context: any.
+// Context: any; a Change that Update did not return has no copies of the
+// tracking configuration other than its fields.
 // Return: true when the submodule is initialized; when its checked-out
-// commit, the commit recorded by the superproject (OldGitlink) or its lock
-// entry differs from New; or when the native branch key in .gitmodules
-// does not match the tracking mode.
+// commit, or the commit or lock entry that the superproject recorded
+// (OldGitlink and Old), differs from New; when the native branch key in
+// .gitmodules does not match the tracking mode; or, for a Change returned
+// by Update, when the lock file in the working tree, or the lsm-mode,
+// lsm-ref or native branch key that the superproject recorded in
+// .gitmodules, does not match the working tree and New.
 func (c Change) Changed() bool {
-	if c.Init || c.Old == nil || c.OldHead != c.New.Commit || c.OldGitlink != c.New.Commit {
+	if c.Init || c.stale || c.Old == nil || c.OldHead != c.New.Commit ||
+		c.OldGitlink != c.New.Commit {
 		return true
 	}
 	return c.Old.Mode != c.New.Mode || c.Old.Ref != c.New.Ref ||
@@ -126,14 +138,15 @@ type UpdateResult struct {
 // out at the target with a detached HEAD, its lock entry is written, and
 // the native branch key in .gitmodules is made to follow the tracking
 // mode. Then .gitmodules, the lock file and the gitlinks of the changed
-// submodules are staged, even when .gitignore matches them; a gitlink that
-// the index records at another commit than the target is staged again, so
-// an update whose staging was undone or failed can be repeated. The two
-// files are staged as a whole, including changes that other submodules
-// have in them. With opts.Commit, one commit is created with the message of
-// CommitMessage; a submodule whose gitlink in HEAD differs from the target
-// counts as changed, so an update staged before is committed too. When no
-// submodule changed, nothing is staged or committed.
+// submodules are staged, even when .gitignore matches them. What the index
+// records counts as well: a submodule whose gitlink, lock entry, lsm-mode,
+// lsm-ref or native branch key in the index differs from the working tree
+// and the target is staged again, so an update whose staging was undone or
+// failed can be repeated. The two files are staged as a whole, including
+// changes that other submodules have in them. With opts.Commit, one commit
+// is created with the message of CommitMessage, and the changes are
+// computed against HEAD instead of the index, so an update staged before is
+// committed too. When no submodule changed, nothing is staged or committed.
 //
 // A submodule that is not initialized is initialized first: offline when
 // its repository exists in the git directory of the superproject, or else
@@ -169,9 +182,14 @@ type UpdateResult struct {
 // ErrUnmanaged for a name that cannot be updated; an error joining the
 // refusals, each wrapping ErrRefused (ErrDirty, ErrNotSubmodule,
 // ErrUninitialized, ErrSymlinkPath, ErrMissingRef or ErrUnrelatedStaged);
-// an error from reading or writing .gitmodules or the lock file; or
-// *git.Error. When the commit fails, the result lists the staged changes
-// along with the error.
+// an error from reading or writing the working tree copy of .gitmodules or
+// the lock file, such as one wrapping git.ErrNotRegularFile for a copy that
+// is not a regular file, manifest.ErrInvalidMode or lock.ErrInvalidEntry;
+// or *git.Error, also for a copy in the index or HEAD that git cannot read,
+// such as one missing from a partial clone. A failure after the first
+// modification is joined with the errors of putting things back, if any.
+// When the commit fails, the result lists the staged changes along with
+// the error.
 func (r *Repo) Update(ctx context.Context, opts UpdateOptions) (UpdateResult, error) {
 	subs, lk, err := r.load(ctx, opts.Names, selectManaged)
 	if err != nil || len(subs) == 0 {
@@ -230,13 +248,48 @@ type step struct {
 	head string
 	// refusal is the reason why the submodule cannot be updated.
 	refusal error
+	// written is the lock entry in the working tree before the update, or
+	// nil.
+	written *lock.Entry
+	// index is what the index records for the submodule, and recorded what
+	// the update replaces: the index, or with Commit HEAD.
+	index    tracking
+	recorded tracking
+}
+
+// newStep returns the step of a submodule, given the lock file of the
+// working tree and the snapshots of the index and of what the update
+// replaces.
+func newStep(sub manifest.Submodule, lk *lock.Lock, index, recorded snapshot) *step {
+	s := &step{
+		written:  lockEntry(lk, sub.Name),
+		index:    index.tracking(sub.Name),
+		recorded: recorded.tracking(sub.Name),
+	}
+	s.change = Change{Submodule: sub, Old: s.recorded.entry}
+	return s
+}
+
+// setTarget records the resolved target and whether the copies of the
+// tracking configuration that Change does not show agree with it.
+func (s *step) setTarget(res Resolution) {
+	s.change.New, s.resolved = res, true
+	s.change.stale = !sameEntry(s.written, s.change.entry()) || !s.agrees(s.recorded)
+}
+
+// agrees reports whether a copy of the tracking configuration records the
+// target: the lock entry of New, and the lsm-mode and lsm-ref of the
+// working tree with the native branch key they need.
+func (s *step) agrees(t tracking) bool {
+	sub := s.change.Submodule
+	return sameEntry(t.entry, s.change.entry()) && t.sub != nil &&
+		t.sub.Mode == sub.Mode && t.sub.Ref == sub.Ref && !staleBranchKey(*t.sub)
 }
 
 // pending reports whether apply must write or stage anything for the step:
-// the change modifies something, or the index records the gitlink at
-// another commit than the target.
+// the change modifies something, or the index does not record the target.
 func (s *step) pending() bool {
-	return s.change.Changed() || s.loc.gitlink != s.change.New.Commit
+	return s.change.Changed() || s.loc.gitlink != s.change.New.Commit || !s.agrees(s.index)
 }
 
 // changes returns the changes of all steps.
@@ -255,9 +308,13 @@ func (u *updater) resolveOptions() ResolveOptions {
 
 // plan inspects every selected submodule and joins all refusals.
 func (u *updater) plan(ctx context.Context, subs []manifest.Submodule, lk *lock.Lock) error {
+	index, recorded, err := u.snapshots(ctx)
+	if err != nil {
+		return err
+	}
 	u.steps = make([]*step, len(subs))
-	err := forEach(ctx, len(subs), maxParallel, func(ctx context.Context, i int) error {
-		s := &step{change: Change{Submodule: subs[i], Old: lockEntry(lk, subs[i].Name)}}
+	err = forEach(ctx, len(subs), maxParallel, func(ctx context.Context, i int) error {
+		s := newStep(subs[i], lk, index, recorded)
 		if err := u.inspect(ctx, s); err != nil {
 			return wrapName(subs[i].Name, err)
 		}
@@ -282,6 +339,17 @@ func (u *updater) plan(ctx context.Context, subs []manifest.Submodule, lk *lock.
 		refusals = append(refusals, s.refusal)
 	}
 	return errors.Join(refusals...)
+}
+
+// snapshots reads the tracking configuration that the index records and the
+// one that the update replaces: the index, or with Commit HEAD.
+func (u *updater) snapshots(ctx context.Context) (snapshot, snapshot, error) {
+	index, err := u.repo.loadSnapshot(ctx, "")
+	if err != nil || !u.opts.Commit {
+		return index, index, err
+	}
+	head, err := u.repo.loadSnapshot(ctx, headRev)
+	return index, head, err
 }
 
 // inspect locates a submodule, records a refusal when it cannot be
@@ -312,7 +380,9 @@ func (u *updater) inspect(ctx context.Context, s *step) error {
 		// A clone, or a repository that names a missing working tree.
 		return nil
 	}
-	res, err := r.resolveIn(ctx, dir, sub, s.change.Old, u.resolveOptions())
+	// The lock file of the working tree keeps a tag pattern at its tag, as
+	// Status shows it.
+	res, err := r.resolveIn(ctx, dir, sub, s.written, u.resolveOptions())
 	if _, missing := errors.AsType[*refError](err); missing && u.opts.Fetch {
 		// Only a dry run gets here: a fetch could bring the ref.
 		return nil
@@ -320,7 +390,7 @@ func (u *updater) inspect(ctx context.Context, s *step) error {
 	if err != nil {
 		return s.refuse(err)
 	}
-	s.change.New, s.resolved = res, true
+	s.setTarget(res)
 	return nil
 }
 
@@ -451,7 +521,7 @@ func (u *updater) recordGitlink(ctx context.Context, s *step) error {
 		return nil
 	}
 	r := u.repo
-	gitlink, err := r.git.TreeGitlink(ctx, r.root, "HEAD", s.change.Submodule.Path)
+	gitlink, err := r.git.TreeGitlink(ctx, r.root, headRev, s.change.Submodule.Path)
 	if errors.Is(err, git.ErrRefNotFound) {
 		gitlink, err = "", nil
 	}
@@ -551,11 +621,11 @@ func (u *updater) resolveLate(ctx context.Context, s *step) error {
 	if s.resolved {
 		return nil
 	}
-	res, err := r.resolveIn(ctx, dir, s.change.Submodule, s.change.Old, u.resolveOptions())
+	res, err := r.resolveIn(ctx, dir, s.change.Submodule, s.written, u.resolveOptions())
 	if err != nil {
 		return s.refuse(err)
 	}
-	s.change.New, s.resolved = res, true
+	s.setTarget(res)
 	return nil
 }
 
@@ -615,10 +685,11 @@ func (u *updater) network() git.Network {
 }
 
 // write stores the lock entry and the native branch key of a step when
-// they differ, and records in undo what it is about to write.
+// the working tree copies differ, and records in undo what it is about to
+// write.
 func (u *updater) write(ctx context.Context, s *step, undo *applyUndo) error {
 	r, c := u.repo, s.change
-	if entry := c.entry(); c.Old == nil || *c.Old != entry {
+	if entry := c.entry(); !sameEntry(s.written, entry) {
 		undo.locked = append(undo.locked, s)
 		if err := lock.Write(ctx, r.git, r.root, entry); err != nil {
 			return err
@@ -656,7 +727,7 @@ func (a *applyUndo) run(ctx context.Context) error {
 		errs = append(errs, a.restoreBranchKey(ctx, s.change.Submodule))
 	}
 	for _, s := range a.locked {
-		errs = append(errs, a.restoreLockEntry(ctx, s.change))
+		errs = append(errs, a.restoreLockEntry(ctx, s))
 	}
 	if len(a.locked) > 0 && !a.hadLock {
 		errs = append(errs, removeEmpty(filepath.Join(a.u.repo.root, lock.File)))
@@ -682,14 +753,14 @@ func (a *applyUndo) restoreBranchKey(ctx context.Context, sub manifest.Submodule
 	return withName(sub.Name, err)
 }
 
-// restoreLockEntry puts back the previous lock entry of a change, or removes
-// the entry when there was none.
-func (a *applyUndo) restoreLockEntry(ctx context.Context, c Change) error {
-	r := a.u.repo
-	if c.Old != nil {
-		return withName(c.Submodule.Name, lock.Write(ctx, r.git, r.root, *c.Old))
+// restoreLockEntry puts back the lock entry that the working tree had
+// before the update, or removes the entry when there was none.
+func (a *applyUndo) restoreLockEntry(ctx context.Context, s *step) error {
+	r, name := a.u.repo, s.change.Submodule.Name
+	if s.written != nil {
+		return withName(name, lock.Write(ctx, r.git, r.root, *s.written))
 	}
-	return withName(c.Submodule.Name, lock.Remove(ctx, r.git, r.root, c.Submodule.Name))
+	return withName(name, lock.Remove(ctx, r.git, r.root, name))
 }
 
 // restore checks out the previous commit of moved submodules. A submodule
