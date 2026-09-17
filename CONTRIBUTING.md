@@ -133,6 +133,10 @@ How the script behaves:
   cache volumes are shared by every run and use the shared label `:z`
   instead, because a private label would be applied again, recursively, on
   each run.
+- **CI annotations:** in GitHub Actions, a failed image build or target
+  also prints an error annotation with the last 25 lines of its output.
+  Annotations of a public repository are readable without signing in,
+  unlike the job logs.
 - **Init process:** the build image runs every command under `catatonit`,
   which reaps orphaned processes. Without it the command itself is PID 1,
   and the zombies of detached git processes (such as automatic

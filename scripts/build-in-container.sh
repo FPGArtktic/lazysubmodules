@@ -182,6 +182,50 @@ die()
 	exit 1
 }
 
+# annotate_failure NAME FILE
+#
+# Print a GitHub Actions error annotation for the failed step NAME, with the
+# last lines of its output in FILE. Annotations of a public repository can be
+# read without signing in, unlike its job logs.
+annotate_failure()
+{
+	local name=$1 file=$2
+	local message
+
+	message="$(tail -n 25 -- "$file" | cut -c 1-200)"
+	message="${message//'%'/'%25'}"
+	message="${message//$'\r'/'%0D'}"
+	message="${message//$'\n'/'%0A'}"
+	printf '::error title=%s: %s failed::%s\n' "$SCRIPT_NAME" "$name" "$message"
+}
+
+# run_step NAME COMMAND...
+#
+# Run COMMAND and return its exit status. In GitHub Actions the output is also
+# kept, so that a failure can be reported with annotate_failure.
+run_step()
+{
+	local name=$1
+	local output rc
+	local -a status
+
+	shift
+	if [[ "${GITHUB_ACTIONS:-}" != true ]]; then
+		"$@"
+		return
+	fi
+	output="${WORK_DIR}/step.log"
+	set +e
+	"$@" 2>&1 | tee "$output"
+	status=("${PIPESTATUS[@]}")
+	set -e
+	rc="${status[0]}"
+	if ((rc != 0)); then
+		annotate_failure "$name" "$output"
+	fi
+	return "$rc"
+}
+
 cleanup()
 {
 	if [[ -n "$WORK_DIR" ]]; then
@@ -808,10 +852,12 @@ main()
 			;;
 		*)
 			check_build_arch
-			ensure_image || die "cannot build image ${IMAGE}"
+			run_step "image build" ensure_image ||
+				die "cannot build image ${IMAGE}"
 			;;
 		esac
-		"target_${target//-/_}" || die "target ${target} failed"
+		run_step "target ${target}" "target_${target//-/_}" ||
+			die "target ${target} failed"
 	done
 }
 
