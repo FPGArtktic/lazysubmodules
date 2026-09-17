@@ -1,0 +1,182 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+
+package core
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/FPGArtktic/lazysubmodules/internal/manifest"
+)
+
+// Layout of commit messages. The limits and the subsystem prefix follow the
+// commit message rules of the project (see CONTRIBUTING.md), so that
+// update commits pass the same checks as hand-written ones.
+const (
+	// maxLineLen is the longest line, in characters.
+	maxLineLen = 75
+	// subjectPrefix starts every subject.
+	subjectPrefix = "manifest: update "
+	// blockIndent indents the lines of one submodule in a message that
+	// lists several, and continued lines.
+	blockIndent = "  "
+	// wipWord is a word that the rules forbid in a subject.
+	wipWord = "wip"
+	// titlePunctuation lists the characters a subject may not end with.
+	titlePunctuation = "?:!.,;"
+)
+
+// CommitMessage returns the message of the commit that records changes.
+//
+// Only changed submodules (see Change.Changed) are described. For one
+// submodule, the subject is "manifest: update <name> to <ref>", where ref
+// is the new tag or branch, or the abbreviated commit in commit mode. A
+// subject that would be longer than 75 characters or break another subject
+// rule (trailing punctuation or white space, the word WIP) becomes
+// "manifest: update <name>", or else "manifest: update 1 submodule". The
+// body reads:
+//
+//	Tracking mode: <mode> <configured ref>
+//	Old: <commit> (<ref>)
+//	New: <commit> (<ref>)
+//
+// Commits are abbreviated to 12 digits, and the ref in parentheses is left
+// out in commit mode. The old commit is the one the superproject recorded
+// (Change.OldGitlink), with the ref of the previous lock entry when that
+// entry records the same commit; without a previous lock entry, the old
+// line is "Old: <commit> (unlocked)", and it is "Old: none" when the
+// superproject recorded no commit. For
+// several submodules, the subject is "manifest: update <N> submodules" and
+// the body has one block per submodule, separated by blank lines: a
+// heading `Submodule "<name>":` followed by the three lines, indented by
+// two spaces. The quoted heading keeps git from taking the last block for
+// trailers, so "git commit -s" adds the sign-off after a blank line. A body
+// line longer than 75 characters continues on the next line, indented by
+// two more spaces, where the line has a ref to move there.
+//
+// Context: any; the message has no Signed-off-by trailer, which "git commit
+// -s" adds.
+// Return: the message, ending with a newline, or "" when nothing changed.
+func CommitMessage(changes []Change) string {
+	var changed []Change
+	for _, c := range changes {
+		if c.Changed() {
+			changed = append(changed, c)
+		}
+	}
+	var b strings.Builder
+	switch len(changed) {
+	case 0:
+		return ""
+	case 1:
+		b.WriteString(subject(changed[0]))
+		b.WriteString("\n\n")
+		writeBody(&b, changed[0], "")
+		return b.String()
+	}
+	fmt.Fprintf(&b, "%s%d submodules\n", subjectPrefix, len(changed))
+	for _, c := range changed {
+		fmt.Fprintf(&b, "\nSubmodule %s:\n", strconv.Quote(c.Submodule.Name))
+		writeBody(&b, c, blockIndent)
+	}
+	return b.String()
+}
+
+// subject returns the subject for a single change.
+func subject(c Change) string {
+	name := displayName(c.Submodule.Name)
+	var candidates []string
+	if c.New.Commit != "" {
+		candidates = append(candidates, subjectPrefix+name+" to "+shownRef(c.New))
+	}
+	candidates = append(candidates, subjectPrefix+name)
+	for _, s := range candidates {
+		if validSubject(s) {
+			return s
+		}
+	}
+	return subjectPrefix + "1 submodule"
+}
+
+// shownRef returns the ref that names a resolution in a subject.
+func shownRef(res Resolution) string {
+	if res.Mode == manifest.ModeCommit {
+		return abbrev(res.Commit)
+	}
+	return res.Ref
+}
+
+// validSubject reports whether s satisfies the subject rules: at most
+// maxLineLen characters, no hard tab, no trailing white space or
+// punctuation, and no word "WIP" in any case.
+func validSubject(s string) bool {
+	last, _ := utf8.DecodeLastRuneInString(s)
+	if utf8.RuneCountInString(s) > maxLineLen || strings.ContainsRune(s, '\t') ||
+		unicode.IsSpace(last) || strings.ContainsRune(titlePunctuation, last) {
+		return false
+	}
+	words := strings.FieldsFunc(s, func(c rune) bool {
+		return c != '_' && !unicode.IsLetter(c) && !unicode.IsDigit(c)
+	})
+	for _, w := range words {
+		if strings.EqualFold(w, wipWord) {
+			return false
+		}
+	}
+	return true
+}
+
+// writeBody writes the three lines describing a change, each prefixed with
+// indent.
+func writeBody(b *strings.Builder, c Change, indent string) {
+	sub := c.Submodule
+	writeLine(b, indent, "Tracking mode: "+string(sub.Mode), sub.Ref)
+	old := "Old: " + abbrev(c.OldGitlink)
+	switch {
+	case c.OldGitlink == "":
+		writeLine(b, indent, "Old: none", "")
+	case c.Old == nil:
+		writeLine(b, indent, old, "(unlocked)")
+	case c.Old.Commit == c.OldGitlink:
+		writeLine(b, indent, old, refNote(c.Old.Mode, c.Old.Ref))
+	default:
+		// The lock entry records another commit, so the old ref is unknown.
+		writeLine(b, indent, old, "")
+	}
+	if c.New.Commit == "" {
+		writeLine(b, indent, "New: unknown", "")
+		return
+	}
+	writeLine(b, indent, "New: "+abbrev(c.New.Commit), refNote(c.New.Mode, c.New.Ref))
+}
+
+// refNote returns the parenthesized ref of a commit line, or "" in commit
+// mode, where the ref is the commit itself.
+func refNote(mode manifest.Mode, ref string) string {
+	if mode == manifest.ModeCommit {
+		return ""
+	}
+	return "(" + ref + ")"
+}
+
+// writeLine writes "<indent><head> <tail>". When that line is too long, the
+// tail continues on the next line, indented by two more spaces.
+func writeLine(b *strings.Builder, indent, head, tail string) {
+	b.WriteString(indent)
+	b.WriteString(head)
+	switch {
+	case tail == "":
+	case utf8.RuneCountInString(indent+head+" "+tail) <= maxLineLen:
+		b.WriteString(" ")
+		b.WriteString(tail)
+	default:
+		b.WriteString("\n")
+		b.WriteString(indent + blockIndent)
+		b.WriteString(tail)
+	}
+	b.WriteString("\n")
+}
