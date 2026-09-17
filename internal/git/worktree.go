@@ -127,6 +127,78 @@ func (r *Runner) IsGitDir(ctx context.Context, dir string) (bool, error) {
 	return SamePath(trimNewline(out), dir)
 }
 
+// RepoState describes what a path that should hold a git directory, such
+// as the repository of a submodule, holds.
+type RepoState int
+
+const (
+	// RepoMissing means that nothing exists at the path.
+	RepoMissing RepoState = iota
+	// RepoInvalid means that something exists at the path, but no git
+	// directory: a file, a broken symbolic link, or a directory without the
+	// objects, refs and HEAD of a repository. Git neither uses nor replaces
+	// it; "git submodule update" fails there even when it may clone.
+	RepoInvalid
+	// RepoUnusable means that the path holds a git directory in which git
+	// refuses to run commands, for example because its configured working
+	// tree is missing, because another user owns it (safe.directory), or
+	// because safe.bareRepository forbids it.
+	RepoUnusable
+	// RepoUsable means that the path holds a git directory in which git
+	// commands can run, as IsGitDir reports it.
+	RepoUsable
+)
+
+// InspectGitDir tells what dir holds: nothing, something that is not a git
+// directory, a git directory that git refuses to use, or a usable one.
+//
+// Whether a directory is a git directory is decided as git decides it for
+// GIT_DIR: it must hold a valid HEAD, "objects" and "refs". Such a
+// directory may still be unusable when git looks for the repository from
+// the directory itself, as IsGitDir does.
+//
+// Context: any; dir may be missing.
+// Return: the state, or an error, for example when dir cannot be inspected,
+// when the context ended, or *Error when git fails for another reason, such
+// as a repository format that git does not support.
+func (r *Runner) InspectGitDir(ctx context.Context, dir string) (RepoState, error) {
+	_, err := os.Lstat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR):
+		return RepoMissing, nil
+	case err != nil:
+		return RepoMissing, fmt.Errorf("git dir %s: %w", dir, err)
+	}
+	fi, err := os.Stat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR):
+		return RepoInvalid, nil
+	case err != nil:
+		return RepoMissing, fmt.Errorf("git dir %s: %w", dir, err)
+	case !fi.IsDir():
+		return RepoInvalid, nil
+	}
+	usable, err := r.IsGitDir(ctx, dir)
+	switch {
+	case usable:
+		return RepoUsable, nil
+	case err != nil && exitCode(err) < 0:
+		// Git did not run to completion, or dir could not be resolved.
+		return RepoMissing, err
+	}
+	// Git refused dir, or found no repository or another one from it. With
+	// an explicit git directory, git neither looks further nor checks the
+	// owner or safe.bareRepository.
+	_, err = r.runOffline(ctx, dir, "--git-dir="+dir, "rev-parse", "--git-dir")
+	switch {
+	case err == nil || fatalWith(err, "cannot chdir to "):
+		return RepoUnusable, nil
+	case fatalWith(err, "not a git repository"):
+		return RepoInvalid, nil
+	}
+	return RepoMissing, err
+}
+
 // fatalWith reports whether err is a fatal error of git whose diagnostics
 // contain one of msgs. The messages are stable because git runs with
 // LC_ALL=C.

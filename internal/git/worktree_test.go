@@ -291,6 +291,118 @@ func TestIsGitDirErrors(t *testing.T) {
 	}
 }
 
+func TestInspectGitDir(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gittest.SHA1)
+	ctx := t.Context()
+	tmp := t.TempDir()
+	gitDir := filepath.Join(f.super.Dir, ".git")
+	modules := filepath.Join(gitDir, "modules", "lib")
+	emptyModule := filepath.Join(gitDir, "modules", "other")
+	empty := filepath.Join(tmp, "empty")
+	file := filepath.Join(tmp, "file")
+	link := filepath.Join(tmp, "link")
+	dangling := filepath.Join(tmp, "dangling")
+	for _, dir := range []string{emptyModule, empty} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gittest.WriteFile(t, file, "gitdir: "+modules+"\n")
+	for target, name := range map[string]string{f.up.Bare: link, "missing": dangling} {
+		if err := os.Symlink(target, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(what string, r *git.Runner, tests map[string]git.RepoState) {
+		t.Helper()
+		for dir, want := range tests {
+			got, err := r.InspectGitDir(ctx, dir)
+			if err != nil || got != want {
+				t.Errorf("%s: InspectGitDir(%s) = %v, %v; want %v", what, dir, got, err, want)
+			}
+		}
+	}
+	r := gittest.Runner(t)
+	check("plain", r, map[string]git.RepoState{
+		gitDir:                         git.RepoUsable,
+		modules:                        git.RepoUsable,
+		f.up.Bare:                      git.RepoUsable,
+		link:                           git.RepoUsable,
+		f.super.Dir:                    git.RepoInvalid,
+		f.sub:                          git.RepoInvalid,
+		emptyModule:                    git.RepoInvalid,
+		empty:                          git.RepoInvalid,
+		file:                           git.RepoInvalid,
+		dangling:                       git.RepoInvalid,
+		filepath.Join(tmp, "missing"):  git.RepoMissing,
+		filepath.Join(file, "missing"): git.RepoMissing,
+	})
+	// Git refuses a bare repository that is not inside a git directory; git
+	// before 2.45 refuses the one of the superproject as well, which it
+	// finds from an empty directory inside it.
+	check("bare repositories refused",
+		gittest.Runner(t, "safe.bareRepository=explicit"), map[string]git.RepoState{
+			f.up.Bare:   git.RepoUnusable,
+			emptyModule: git.RepoInvalid,
+			empty:       git.RepoInvalid,
+		})
+	owner, err := git.New(git.WithEnv(append(gittest.Env(t),
+		"GIT_TEST_ASSUME_DIFFERENT_OWNER=1")...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("owned by another user", owner, map[string]git.RepoState{
+		gitDir:      git.RepoUnusable,
+		modules:     git.RepoUnusable,
+		emptyModule: git.RepoInvalid,
+	})
+
+	// Git cannot enter the working tree that the repository names.
+	f.super.Deinit(t, f.path)
+	if err := r.SubmoduleInit(ctx, f.super.Dir, f.path, git.Offline, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(f.sub); err != nil {
+		t.Fatal(err)
+	}
+	check("working tree removed", r, map[string]git.RepoState{modules: git.RepoUnusable})
+}
+
+func TestInspectGitDirErrors(t *testing.T) {
+	t.Parallel()
+	r := gittest.Runner(t)
+	// A repository format that git does not know.
+	future := filepath.Join(t.TempDir(), "future.git")
+	gittest.Git(t, filepath.Dir(future), "init", "--quiet", "--bare", future)
+	gittest.Git(t, future, "config", "core.repositoryFormatVersion", "1")
+	gittest.Git(t, future, "config", "extensions.lsmFuture", "true")
+	state, err := r.InspectGitDir(t.Context(), future)
+	if _, ok := errors.AsType[*git.Error](err); !ok {
+		t.Errorf("InspectGitDir(unknown extension) = %v, %v; want *git.Error", state, err)
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	state, err = r.InspectGitDir(ctx, t.TempDir())
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("InspectGitDir(canceled) = %v, %v; want context.Canceled", state, err)
+	}
+
+	if os.Geteuid() == 0 {
+		t.Skip("permissions do not apply to root")
+	}
+	locked := filepath.Join(t.TempDir(), "locked")
+	if err := os.Mkdir(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+	state, err = r.InspectGitDir(t.Context(), filepath.Join(locked, "repo"))
+	if !errors.Is(err, os.ErrPermission) {
+		t.Errorf("InspectGitDir(unreadable) = %v, %v; want a permission error", state, err)
+	}
+}
+
 func TestSamePath(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
