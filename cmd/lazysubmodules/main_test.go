@@ -25,6 +25,7 @@ Commands:
   fetch    download branches and tags of submodules (network)
   verify   check that lock file, gitlinks and checkouts agree
   foreach  run a command in every managed submodule
+  tui      start the interactive terminal interface
   version  print version, commit and build date
   help     show help for lazysubmodules or a command
 

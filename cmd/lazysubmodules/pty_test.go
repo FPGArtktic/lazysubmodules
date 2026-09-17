@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -100,6 +101,18 @@ func (p *ptyProcess) Output() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.output.String()
+}
+
+// waitOutput waits until the output contains s.
+func (p *ptyProcess) waitOutput(s string) {
+	p.t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for !strings.Contains(p.Output(), s) {
+		if time.Now().After(deadline) {
+			p.t.Fatalf("no %q in the output:\n%q", s, p.Output())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // wait waits for the process to end, typing keys every 200 ms meanwhile,

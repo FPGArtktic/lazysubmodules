@@ -86,6 +86,15 @@ The first command that fails ends foreach with exit status 1. The command
 gets the variables name, sm_path, displaypath, sha1, toplevel, LSM_MODE and
 LSM_REF. The '--' may be left out when the command does not start with '-'.
 
+$ lazysubmodules tui -h
+Usage: lazysubmodules tui
+
+Start the terminal user interface. Standard input and output must be a
+terminal that supports cursor movement (TERM set and not "dumb").
+Git runs without the terminal there, so fetching cannot answer prompts: it
+needs a credential helper or an SSH agent, and SSH host keys that are
+already known.
+
 $ lazysubmodules version -h
 Usage: lazysubmodules version
 

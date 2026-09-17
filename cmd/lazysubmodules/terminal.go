@@ -56,9 +56,10 @@ func (e *env) colorOutput() bool {
 }
 
 // openRepo opens the superproject containing the working directory. Git
-// runs with the environment of the process and e.gitEnv.
-func (e *env) openRepo(ctx context.Context) (*core.Repo, error) {
-	g, err := git.New(git.WithEnv(e.gitEnv...))
+// runs with the environment of the process and e.gitEnv, then the options
+// add to it.
+func (e *env) openRepo(ctx context.Context, opts ...git.Option) (*core.Repo, error) {
+	g, err := git.New(slices.Concat([]git.Option{git.WithEnv(e.gitEnv...)}, opts)...)
 	if err != nil {
 		return nil, err
 	}

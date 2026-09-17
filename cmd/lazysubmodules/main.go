@@ -33,7 +33,8 @@ type env struct {
 	// dir is the directory the command runs in; empty means the current
 	// working directory.
 	dir string
-	// environ is the process environment, consulted for NO_COLOR and TERM.
+	// environ is the process environment, consulted for NO_COLOR and TERM
+	// and passed to the terminal interface.
 	environ []string
 	// gitEnv holds KEY=VALUE pairs added to the environment of every git
 	// invocation, after the inherited environment.
@@ -65,6 +66,7 @@ func commands() []command {
 		fetchCommand(),
 		verifyCommand(),
 		foreachCommand(),
+		tuiCommand(),
 		{
 			name:    "version",
 			summary: "print version, commit and build date",

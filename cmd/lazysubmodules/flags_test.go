@@ -25,6 +25,7 @@ func TestSynopsis(t *testing.T) {
 		"lazysubmodules fetch [<name>...]",
 		"lazysubmodules verify [<name>...] [--signatures]",
 		"lazysubmodules foreach -- <command> [args...]",
+		"lazysubmodules tui",
 		"lazysubmodules version",
 		"lazysubmodules help [<command>]",
 	}
