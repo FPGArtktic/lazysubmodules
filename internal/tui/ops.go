@@ -382,7 +382,8 @@ func (m Model) onPlan(msg planMsg) Model {
 }
 
 // firstChange returns the first change of an update that modifies
-// anything.
+// anything, including an index that the update stages again (see
+// core.Change.Changed).
 func firstChange(res core.UpdateResult) (core.Change, bool) {
 	i := slices.IndexFunc(res.Changes, core.Change.Changed)
 	if i < 0 {
@@ -398,12 +399,7 @@ func updatePrompt(name string, c core.Change, commit, staged bool) []string {
 	lines := []string{"Update " + clean(name) + ": " + changeText(c)}
 	switch {
 	case !c.RecordChanged():
-		what := "staged"
-		if commit {
-			what = "committed"
-		}
-		return append(lines, "The superproject records this already; nothing is "+what+".",
-			"Continue?")
+		return append(lines, unrecordedText(name, c, commit), "Continue?")
 	case staged:
 		lines = append(lines, "The update is staged already.")
 	}
@@ -414,9 +410,41 @@ func updatePrompt(name string, c core.Change, commit, staged bool) []string {
 	return append(lines, action)
 }
 
+// unrecordedText describes an update that changes nothing the superproject
+// records, which is HEAD when commit is set and the index otherwise: what
+// it rewrites to match that record, and that nothing is staged or
+// committed.
+func unrecordedText(name string, c core.Change, commit bool) string {
+	record, what := "The index", "staged"
+	if commit {
+		record, what = "HEAD", "committed"
+	}
+	var done []string
+	switch files := c.RestoredFiles(); len(files) {
+	case 0:
+	case 1:
+		done = append(done, "the working tree copy of "+files[0]+" is rewritten to match it")
+	default:
+		done = append(done, "the working tree copies of "+strings.Join(files, " and ")+
+			" are rewritten to match it")
+	}
+	if c.RestoresIndex() {
+		done = append(done, "the change staged for "+clean(name)+" is discarded")
+	}
+	done = append(done, "nothing is "+what)
+	if len(done) > 1 {
+		done[len(done)-1] = "and " + done[len(done)-1]
+	}
+	return record + " records this already; " + strings.Join(done, ", ") + "."
+}
+
 // changeText describes a planned update, as "update --dry-run" does: what
 // the superproject records now, the target, and what else happens to the
-// submodule.
+// submodule. "record again" means that the superproject records the same
+// commit anew, "restore <files>" that the working tree copies of these
+// files are rewritten to what the superproject records already, and
+// "discard the staged change" that the index gets back what HEAD records
+// for the submodule.
 func changeText(c core.Change) string {
 	from, to := oldSide(c), newSide(c)
 	if c.Old != nil && c.Old.Commit == c.OldGitlink && c.New.Commit != "" &&
@@ -437,6 +465,12 @@ func changeText(c core.Change) string {
 		text += ", HEAD is " + shortCommit(c.OldHead)
 	case from == to && c.RecordChanged():
 		text += ", record again"
+	}
+	if files := c.RestoredFiles(); len(files) > 0 {
+		text += ", restore " + strings.Join(files, " and ")
+	}
+	if c.RestoresIndex() {
+		text += ", discard the staged change"
 	}
 	return text
 }
@@ -467,6 +501,15 @@ func newSide(c core.Change) string {
 	return resolutionText(c.New)
 }
 
+// restoresOnly reports whether a change that modifies anything only
+// rewrites copies of .gitmodules, .lsm.lock or the gitlink to what the
+// superproject records (see core.Change.RestoredFiles and
+// core.Change.RestoresIndex): it records nothing new, and it neither
+// initializes the submodule nor checks out another commit.
+func restoresOnly(c core.Change) bool {
+	return !c.Init && c.OldHead == c.New.Commit && !c.RecordChanged()
+}
+
 // updateOp updates one submodule without fetching.
 func (m Model) updateOp(name string, commit bool) operation {
 	b := m.backend
@@ -480,7 +523,9 @@ func (m Model) updateOp(name string, commit bool) operation {
 }
 
 // updateText describes the outcome of an update: what happened to the
-// submodule, and whether the result was staged or committed.
+// submodule, whether a staged change was discarded, and whether the result
+// was staged or committed. Only a change of what the superproject records
+// is staged or committed.
 func updateText(name string, res core.UpdateResult, commit bool) string {
 	c, ok := firstChange(res)
 	if !ok {
@@ -493,12 +538,19 @@ func updateText(name string, res core.UpdateResult, commit bool) string {
 		text = "cloned at " + target
 	case c.Init:
 		text = "initialized at " + target
+	case restoresOnly(c) && len(c.RestoredFiles()) > 0:
+		text = strings.Join(c.RestoredFiles(), " and ") + " restored to " + target
+	case restoresOnly(c):
+		text = "index restored to " + target
 	case !c.RecordChanged():
 		text = "checked out " + target
 	case oldSide(c) == newSide(c):
 		text = target + " recorded again"
 	default:
 		text = "updated to " + target
+	}
+	if c.RestoresIndex() {
+		text += ", staged change discarded"
 	}
 	switch {
 	case res.Commit != "":

@@ -643,7 +643,7 @@ func TestUpdatePlan(t *testing.T) {
 	h.selectName("theme")
 	h.press("u")
 	h.waitDialog("Update theme: v1.0.0 (5e5e000), initialize",
-		"The superproject records this already; nothing is staged.", "Continue?")
+		"The index records this already; nothing is staged.", "Continue?")
 	h.confirmWhenReady()
 	h.waitScreen("theme: initialized at v1.0.0 (5e5e000)")
 	h.wantScreen(nil, "staged")

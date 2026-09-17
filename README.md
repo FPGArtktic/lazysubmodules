@@ -768,9 +768,22 @@ narrower than 80 columns.
 | `q` / `Ctrl+C` | Quit (`q` closes an open overlay first) |
 
 - **Confirmation:** actions that modify the superproject ask for
-  confirmation first. `b`, `t` and `p` change only the tracking
-  configuration, like `lazysubmodules set`; press `u` or `U` afterwards to
-  update.
+  confirmation first. The question for `u` and `U` also says when the
+  update changes nothing that the index (`u`) or `HEAD` (`U`) records, so
+  that nothing is staged or committed: when it only initializes the
+  submodule, checks out the recorded commit, or rewrites the working tree
+  copy of `.gitmodules` or `.lsm.lock` to what is recorded. With `U`, it
+  also says when a change staged for the submodule is discarded, as
+  [`update --commit`](#update---commit) does. `b`, `t` and `p` change only
+  the tracking configuration, like `lazysubmodules set`; press `u` or `U`
+  afterwards to update.
+- **Outcome:** the status bar says what happened, for example
+  `kernel: updated to v6.6.10 (08dcd0d), staged`,
+  `theme: initialized at v1.0.0 (05f49f3)`, or
+  `sdk: .lsm.lock restored to v2.9.0 (68a8743)`. It adds
+  `staged change discarded` when `U` discarded a staged change, and ends
+  with `staged`, `committed <commit>` or `nothing to commit` only when
+  that applies.
 - **Pattern entry:** `p` shows how many local tags match the pattern while
   you type.
 - **Background work:** long-running operations run in the background with a
