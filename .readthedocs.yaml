@@ -23,7 +23,8 @@ build:
       | python -m pip install --no-cache-dir --require-hashes --only-binary=:all:
       -r /dev/stdin
     - mkdir -p "$READTHEDOCS_OUTPUT/html"
-    - cp -R docs "$READTHEDOCS_OUTPUT/html/docs"
+    # The images the README embeds, when the checkout has any.
+    - if [ -d docs ]; then cp -R docs "$READTHEDOCS_OUTPUT/html/docs"; fi
     - |
       python - <<'EOF'
       import os
