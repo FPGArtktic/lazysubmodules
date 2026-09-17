@@ -207,6 +207,26 @@ func TestMoveTag(t *testing.T) {
 	checkTagTypes(t, up.Bare)
 }
 
+// TestUpstreamDisablesAutoMaintenance checks the bare repository's own
+// configuration: a push does not pass the environment configuration on to
+// the receiving side, so only these settings keep it from detaching
+// background gc or maintenance processes.
+func TestUpstreamDisablesAutoMaintenance(t *testing.T) {
+	t.Parallel()
+	up := gittest.NewUpstream(t, gittest.SHA1)
+	want := map[string]string{
+		"receive.autogc":   "false",
+		"gc.auto":          "0",
+		"maintenance.auto": "false",
+	}
+	for key, value := range want {
+		got := gittest.Git(t, up.Bare, "config", "--local", "--get", key)
+		if got != value {
+			t.Errorf("%s = %q in the bare repository, want %q", key, got, value)
+		}
+	}
+}
+
 func TestSuper(t *testing.T) {
 	t.Parallel()
 	up, commits := gittest.NewTaggedUpstream(t, gittest.SHA1)

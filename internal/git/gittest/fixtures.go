@@ -46,10 +46,29 @@ func NewUpstream(t testing.TB, format string) *Upstream {
 		Work: filepath.Join(root, "work"),
 	}
 	Git(t, root, "init", "--quiet", "--bare", "--object-format="+format, u.Bare)
+	disableAutoMaintenance(t, u.Bare)
 	Git(t, root, "init", "--quiet", "--object-format="+format, u.Work)
 	Git(t, u.Work, "remote", "add", "origin", u.Bare)
 	u.Commit(t, "initial commit")
 	return u
+}
+
+// disableAutoMaintenance turns off automatic gc and maintenance in the
+// repository at dir.
+//
+// The receiving side of a push to a local repository does not see the
+// configuration that Env passes through the environment. Without this, every
+// push starts a detached "git gc --auto" or "git maintenance run --auto" in
+// the bare repository. Such a process outlives its parent, so in a container
+// whose init process does not reap orphans each push leaves a zombie behind
+// until the process limit is exhausted.
+//
+// Context: test helper; dir must be a git repository.
+func disableAutoMaintenance(t testing.TB, dir string) {
+	t.Helper()
+	Git(t, dir, "config", "receive.autogc", "false")
+	Git(t, dir, "config", "gc.auto", "0")
+	Git(t, dir, "config", "maintenance.auto", "false")
 }
 
 // NewTaggedUpstream creates an upstream with release history.
