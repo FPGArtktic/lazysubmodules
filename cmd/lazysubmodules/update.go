@@ -63,7 +63,10 @@ func runUpdate(ctx context.Context, e *env, c command, args []string) int {
 }
 
 // writeUpdate prints one line per submodule and what happened to the
-// commit; err is the error of the update.
+// commit; err is the error of the update. A commit, and the subject that a
+// dry run shows, describe only the submodules whose recorded state changes
+// (see core.Change.RecordChanged), not those that are only initialized or
+// checked out.
 func writeUpdate(w io.Writer, opts core.UpdateOptions, res core.UpdateResult, err error) {
 	if len(res.Changes) == 0 && err == nil {
 		fmt.Fprintln(w, "no managed submodules")
@@ -97,7 +100,13 @@ func unknownTarget(c core.Change) bool {
 // changeLine describes the update of one submodule, such as
 // "kernel: v6.6.8 (a1b2c3d) -> v6.6.9 (e4f5a6b)". The old side is what the
 // superproject recorded, as in the commit message; notes tell what else
-// happens to the submodule.
+// happens to the submodule: "recorded again" when the superproject records
+// the same commit anew; "restored <files>" when the superproject records
+// the target already and the working tree copies of these files are
+// rewritten to match it (see core.Change.RestoredFiles); and "discarded the
+// staged change" when --commit stages what HEAD records for the submodule
+// in place of a different staged gitlink, lock entry or tracking keys (see
+// core.Change.RestoresIndex).
 func changeLine(c core.Change, dryRun bool) string {
 	name := displayName(c.Submodule.Name)
 	if !c.Changed() {
@@ -123,6 +132,12 @@ func changeLine(c core.Change, dryRun bool) string {
 		notes = append(notes, pick(dryRun, "HEAD is ", "HEAD was ")+short(c.OldHead))
 	case from == to && c.RecordChanged():
 		notes = append(notes, pick(dryRun, "record again", "recorded again"))
+	}
+	if files := c.RestoredFiles(); len(files) > 0 {
+		notes = append(notes, pick(dryRun, "restore ", "restored ")+strings.Join(files, " and "))
+	}
+	if c.RestoresIndex() {
+		notes = append(notes, pick(dryRun, "discard", "discarded")+" the staged change")
 	}
 	text = strings.Join(append([]string{text}, notes...), ", ")
 	if dryRun {

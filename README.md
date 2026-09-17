@@ -380,34 +380,91 @@ Options:
 All checks run for every selected submodule before anything is modified.
 If one submodule is refused, nothing changes.
 
-`update` prints one line per submodule, for example:
+`update` prints one line per submodule. The left side is what the
+superproject records (in the index, or in `HEAD` with `--commit`): the
+locked ref and commit, `<commit> (unlocked)` without a lock entry, or
+`none` without a gitlink. The right side is the target:
 
 ```text
-kernel: v6.6.8 (a1b2c3d) -> v6.6.9 (e4f5a6b)
+kernel: v6.6.9 (8106f61) -> v6.6.10 (08dcd0d)
 u-boot: up to date
+theme: v1.0.0 (05f49f3), initialized
+sdk: tag-pattern v3.0.0-rc.2 (6308203) -> tag v2.9.0 (68a8743)
+committed 613148ee5508e55f3702a142d5764a51d0d7bac4
 ```
 
-With `--commit`, it also prints the new commit. The human-readable output is
-not a stable interface; scripts should use `status --porcelain=v1`.
+- **Notes:**
+  - `initialized` or `cloned` for a submodule that was not checked out;
+  - `HEAD was <commit>` when the submodule was checked out at a commit
+    other than the recorded one;
+  - `recorded again` when the superproject records the same commit
+    again, for example after `set` changed the ref but not the commit;
+  - `restored .lsm.lock`, `restored .gitmodules` or
+    `restored .gitmodules and .lsm.lock` when the superproject records
+    the target already, but the working tree copy of the file does not:
+    the lock entry of the submodule differs or is missing, or its native
+    `branch` key does not follow the tracking mode. The update rewrites
+    that entry or key to what the superproject records;
+  - `discarded the staged change` (only with `--commit`) when `HEAD`
+    records the target already, but the index holds a different gitlink,
+    lock entry or tracking keys for the submodule. The update stages what
+    `HEAD` records in their place, so the staged change is lost (see
+    [`update --commit`](#update---commit)).
+
+  The mode is shown on both sides when it changes.
+- **Dry run:** each line starts with `would update`, and the notes read
+  `initialize`, `clone`, `HEAD is <commit>`, `record again`,
+  `restore <files>` and `discard the staged change`.
+- **Commit:** with `--commit`, the last line is `committed <commit>` or
+  `nothing to commit`. A dry run prints `would commit "<subject>"`,
+  `would commit the result` when a target is not known before a clone, or
+  `nothing to commit`.
+- **Nothing selected:** without managed submodules, `update` prints
+  `no managed submodules`.
+
+This output is not a stable interface; scripts should use
+`status --porcelain=v1`.
 
 #### `update --commit`
 
-- **Staged changes:** the index may contain only `.gitmodules`, `.lsm.lock`
-  and the paths of the updated submodules. Anything else is refused (exit
-  code 3).
+- **Unrelated changes:** the commit may contain only the update. `update`
+  refuses (exit code 3) when other paths than `.gitmodules`, `.lsm.lock`
+  and the selected submodules are staged, or when `.gitmodules` or
+  `.lsm.lock` differ from `HEAD` outside the sections of the selected
+  submodules, staged or not. It also refuses while the index has
+  unresolved merge conflicts.
 - **Commit:** the commit is created with `git commit -s`, so the
   `Signed-off-by` line comes from `user.name` and `user.email`. Commit hooks
   run as configured.
-- **One commit per invocation.** When nothing changed, no commit is created.
+- **What the commit records:** one commit per invocation. The commit and
+  its message cover only the submodules whose gitlink, lock entry or
+  tracking keys (`lsm-mode`, `lsm-ref`, the native `branch` key) change
+  compared with `HEAD`.
+- **Left out:** a submodule that is only initialized, cloned, or checked
+  out at the commit that `HEAD` records is still updated, but it is
+  neither in the commit nor in the message. The same applies when the
+  update only rewrites its entries in `.gitmodules` or `.lsm.lock` to
+  what `HEAD` records (`restored …`).
+- **Nothing to commit:** without such a change, no commit is made and
+  `update` prints `nothing to commit`.
+- **Staged changes of a selected submodule:** the update stages the
+  target of each selected submodule: its gitlink, its lock entry and its
+  tracking keys, replacing whatever was staged for them. When `HEAD`
+  records the target already, the submodule is left out of the commit,
+  so a different staged value is discarded without being committed; the
+  line then says `discarded the staged change`. Run
+  `update --dry-run --commit` first to see it.
 
-For one submodule the message looks like this:
+For example, when kernel moves to a new tag and theme is only
+initialized, `update --commit theme kernel` creates a commit for kernel
+alone. For one submodule the message looks like this:
 
 ```text
-manifest: update kernel to v6.6.9
+manifest: update kernel to v6.6.10
 
 Tracking mode: tag-pattern v6.6.*
-Old: a1b2c3d4e5f6 (v6.6.8)
-New: e4f5a6b7c8d9 (v6.6.9)
+Old: 8106f614767a (v6.6.9)
+New: 08dcd0dc8f98 (v6.6.10)
 
 Signed-off-by: Your Name <you@example.org>
 ```
