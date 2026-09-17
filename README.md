@@ -51,6 +51,7 @@ and an interactive terminal user interface (TUI). The binary is called
 - [Building from source](#building-from-source)
 - [Known limitations](#known-limitations)
 - [Contributing](#contributing)
+- [Security](#security)
 - [License](#license)
 - [Author](#author)
 
@@ -1018,7 +1019,17 @@ collects them (see
 Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the
 build and test workflow, the coding style and the commit message rules.
 Every commit needs a `Signed-off-by` line, which certifies the
-[Developer Certificate of Origin](DCO).
+[Developer Certificate of Origin](DCO). Bug reports and feature requests
+go to the
+[issue tracker](https://github.com/FPGArtktic/lazysubmodules/issues); its
+forms ask for the details that help, such as the output of
+`lazysubmodules version` and `status --porcelain=v1`.
+
+## Security
+
+Do not report vulnerabilities in public issues. [SECURITY.md](SECURITY.md)
+describes how to report them privately, what to include and what to
+expect.
 
 ## License
 

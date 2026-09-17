@@ -1,0 +1,167 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+#
+# GitHub issue form for bug reports. Syntax: "Syntax for issue forms" in the
+# GitHub documentation.
+
+name: Bug report
+description: Report a problem with the lazysubmodules command line or terminal interface.
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem.
+
+        - **Security issues:** do not report them here. Follow the
+          [security policy](https://github.com/FPGArtktic/lazysubmodules/blob/main/SECURITY.md)
+          instead.
+        - **Known limitations:** nested submodules are not managed
+          recursively, and the remote is always `origin`. See
+          [Known limitations](https://github.com/FPGArtktic/lazysubmodules#known-limitations).
+        - **Private data:** remove repository URLs, names and paths that you
+          do not want to publish from everything you paste below.
+
+  - type: checkboxes
+    id: search
+    attributes:
+      label: Existing issues
+      options:
+        - label: >-
+            I searched the [existing issues](https://github.com/FPGArtktic/lazysubmodules/issues?q=is%3Aissue)
+            and found none about this problem.
+          required: true
+
+  - type: textarea
+    id: version
+    attributes:
+      label: LazySubmodules version
+      description: The complete output of `lazysubmodules version`.
+      placeholder: |
+        lazysubmodules 1.2.3
+        commit: 0123456789abcdef0123456789abcdef01234567
+        date: 2026-09-16T12:00:00Z
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      options:
+        - Release archive
+        - Debian package (.deb)
+        - RPM package (.rpm)
+        - Arch Linux package lazysubmodules-git (recipe in packaging/aur/)
+        - go install
+        - Built from source
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and architecture
+      description: Distribution, release and CPU architecture.
+      placeholder: Debian 13 (trixie), amd64
+    validations:
+      required: true
+
+  - type: input
+    id: git-version
+    attributes:
+      label: Git version
+      description: The output of `git --version`.
+      placeholder: git version 2.47.3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Affected interface
+      options:
+        - Command line
+        - Terminal interface (lazysubmodules tui)
+        - Both
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: >-
+        The exact commands, starting from a fresh clone if possible. A script
+        that builds a small superproject with local repositories is ideal.
+      placeholder: |
+        1. lazysubmodules set kernel --tag-pattern 'v6.6.*'
+        2. lazysubmodules update kernel --fetch
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: >-
+        What happened instead: the complete output, including error messages,
+        and the exit status (`echo $?`). For the terminal interface, describe
+        the screen or attach a screenshot.
+    validations:
+      required: true
+
+  - type: textarea
+    id: porcelain
+    attributes:
+      label: Status output
+      description: >-
+        The output of `lazysubmodules status --porcelain=v1` in the affected
+        superproject, before and after the problem if it changed anything.
+        Keep the TAB characters.
+      placeholder: |
+        # lsm-porcelain v1
+        kernel	kernel	tag-pattern	v6.6.*	v6.6.8	a1b2c3d4...	a1b2c3d4...	ok
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Submodule configuration
+      description: >-
+        The entries of the affected submodules in `.gitmodules` and
+        `.lsm.lock`, if they matter.
+      placeholder: |
+        [submodule "kernel"]
+        	path = kernel
+        	url = https://git.example.org/linux.git
+        	lsm-mode = tag-pattern
+        	lsm-ref = v6.6.*
+      render: ini
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: >-
+        Anything else that may help, for example the terminal emulator and
+        `TERM` for display problems, or Git settings such as
+        `url.<base>.insteadOf`, `submodule.recurse` or commit signing.
+    validations:
+      required: false

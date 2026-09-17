@@ -26,6 +26,7 @@ license, `GPL-3.0-only` (see [LICENSE](LICENSE)), and you certify the
 - [Dependencies](#dependencies)
 - [Third-party notices](#third-party-notices)
 - [AUR recipe](#aur-recipe)
+- [Community files](#community-files)
 - [Stable interfaces](#stable-interfaces)
 - [Pull requests and releases](#pull-requests-and-releases)
 
@@ -488,7 +489,7 @@ Signed-off-by: Name <email>
 | `scripts` | `scripts/`, including the demo and the recording script |
 | `ci` | `.github/workflows/ci.yml` |
 | `release` | `.goreleaser.yaml`, `.github/workflows/release.yml`, `packaging/` |
-| `docs` | `README.md`, `CONTRIBUTING.md`, `LICENSE`, `DCO`, `docs/` (recordings and tapes), `examples/` |
+| `docs` | `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `DCO`, `docs/` (recordings and tapes), `examples/`, the issue forms and the pull request template in `.github/` |
 
 No other prefixes are accepted. The release changelog is grouped by these
 prefixes.
@@ -818,6 +819,25 @@ AUR; only then does the README link to it:
    `makepkg --printsrcinfo > .SRCINFO`.
 4. Commit and push, and bring the refreshed `PKGBUILD` and `.SRCINFO`
    back into this repository.
+
+## Community files
+
+| File | Purpose |
+|---|---|
+| `.github/ISSUE_TEMPLATE/1-bug-report.yml` | Bug report form: version, installation method, system, Git version, interface, steps, expected and actual behavior, and optionally the porcelain output and the submodule configuration. Applies the label `bug` |
+| `.github/ISSUE_TEMPLATE/2-feature-request.yml` | Feature request form. Applies the label `enhancement` |
+| `.github/ISSUE_TEMPLATE/config.yml` | Turns off blank issues, and links to the security policy and the README |
+| `.github/pull_request_template.md` | Summary, testing, and a checklist of the rules in this guide |
+| `SECURITY.md` | Supported versions, private reporting of vulnerabilities, response goals and scope |
+
+- **Consistency:** when a rule in this guide changes, such as the prefix
+  list or a command, update the pull request template as well; when the
+  release process or the supported versions change, update `SECURITY.md`.
+- **Repository settings:** `SECURITY.md` sends reporters to private
+  vulnerability reporting (Settings, Advanced Security), which provides
+  the "Report a vulnerability" button; keep it turned on. Without it,
+  reporters can only use the e-mail address in `SECURITY.md`. The forms
+  use the labels `bug` and `enhancement`; keep them in the repository.
 
 ## Stable interfaces
 

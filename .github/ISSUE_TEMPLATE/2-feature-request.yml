@@ -1,0 +1,90 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+#
+# GitHub issue form for feature requests. Syntax: "Syntax for issue forms" in
+# the GitHub documentation.
+
+name: Feature request
+description: Suggest a new feature or an improvement.
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. A few things are settled by
+        design, so proposals that change them need a strong reason:
+
+        - **Stable interfaces:** the `status --porcelain=v1` output, the exit
+          codes and the `lsm-mode` and `lsm-ref` keys do not change. An
+          incompatible output change needs a new porcelain version.
+        - **Network policy:** only `fetch`, `update --fetch` and `add` use
+          the network.
+        - **Scope:** Linux only, Git through the `git` command only, and no
+          replacement for `repo`, `west` or `git subtree`.
+
+  - type: checkboxes
+    id: search
+    attributes:
+      label: Existing issues
+      options:
+        - label: >-
+            I searched the [existing issues](https://github.com/FPGArtktic/lazysubmodules/issues?q=is%3Aissue)
+            and found none about this idea.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: >-
+        What are you trying to do, and what makes it hard today? Describe the
+        workflow rather than the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: >-
+        How it could work: command line syntax, key bindings in the terminal
+        interface, output, and what happens in error cases.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: >-
+        Workarounds you use now (plain Git commands, scripts around
+        `lazysubmodules foreach` or the porcelain output), and other
+        solutions you considered.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Command line
+        - Terminal interface
+        - Tracking modes and resolution
+        - Lock file
+        - Porcelain output
+        - Verification and signatures
+        - Packaging and releases
+        - Documentation
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, examples of similar tools, or anything else that helps.
+    validations:
+      required: false
