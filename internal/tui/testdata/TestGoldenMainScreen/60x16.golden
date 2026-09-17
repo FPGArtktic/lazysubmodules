@@ -1,0 +1,16 @@
+┌[1m Submodules [m──────────────────────────────────────────────┐
+│ [1mNAME      [m [1mMODE       [m [1mREF    [m [1mLOCK   [m [1mSTATE        [m     │
+│[7m kernel     tag-pattern v6.6.*  a1b2c3d behind       [m     │
+│ u-boot     branch      main    d4e5f6a behind            │
+│ fpga-ip    tag         v2.3.1  0718ab2 drift             │
+│ crypto lib commit      3f2a1b0 3f2a1b0 ok                │
+│ legacy     -           -       -       unmanaged         │
+│ theme      tag         v1.0.0  5e5e000 uninitialized     │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+ 6 submodules, 4 not ok                                     
+ [1mu[m update  [1mb[m branch  [1mt[m tag  [1mp[m pattern  [1m?[m help  [1mq[m quit       

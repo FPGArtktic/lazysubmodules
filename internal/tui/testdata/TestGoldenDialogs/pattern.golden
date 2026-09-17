@@ -1,0 +1,24 @@
+┌[1m Submodules [m─────────────────────────────────────────┬[1m Preview [m───────────────┐
+│ [1mNAME      [m [1mMODE       [m [1mREF    [m [1mLOCK   [m [1mSTATE        [m│ [1mkernel[m behind          [m│
+│[7m kernel     tag-pattern v6.6.*  a1b2c3d behind       [m│ update would select    │
+│ u-boot     branch      main    d4e5f6a behind       │ tag-pattern v6.6.9     │
+│ fpga-ip    tag         v2.3.1  0718ab2 drift        │ instead of tag-pattern │
+│ crypt[m ┌[1m Track kernel by tag pattern [m─────────────────────────────────┐       │
+│ legac[m │ [1mpattern: [mv6.6.*[7;37m [m                                             │       │
+│ theme[m │                                                              │ 2c3d  │
+│      [m │ 4 local tags match                                           │ 5a6b  │
+│      [m │   v6.6.10                                                    │       │
+│      [1m[m[m │   v6.6.9                                                     │ [1m[m      │
+│      [m │   v6.6.8                                                     │ 6.6.9 │
+│      [m │   v6.6.1                                                     │       │
+│      [1m[m[m │                                                              │ [1m[m      │
+│      [m │ Pre-release tags are skipped by an update,                   │ ked c…│
+│      [m │ unless the lock records one already.                         │       │
+│      [1m[m[m └──────────────────────────────────────────────────────────────┘ [1m[m      │
+│                                                     │   a1b2c3d Linux v6.6.8 │
+│                                                     │   9f8e7d6 Linux v6.6.7 │
+│                                                     │   8e7d6c5 Linux v6.6.6 │
+│                                                     │                        │
+└─────────────────────────────────────────────────────┴────────────────────────┘
+ 6 submodules, 4 not ok                                                         
+ [1menter[m choose  [1mesc[m cancel                                                       

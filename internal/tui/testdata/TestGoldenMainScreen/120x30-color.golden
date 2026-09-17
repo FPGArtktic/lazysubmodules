@@ -1,0 +1,30 @@
+[90m┌[m[1;36m Submodules [m[90m─────────────────────────────────────────[m[90m┬[m[1;36m Preview [m[90m───────────────────────────────────────────────────────[m[90m┐[m
+[90m│[m [1;36mNAME      [m [1;36mMODE       [m [1;36mREF    [m [1;36mLOCK   [m [1;36mSTATE        [m[90m│[m [1;36mkernel[m [33mbehind[m                                                  [90m│[m
+[90m│[m[7m kernel     tag-pattern v6.6.*  a1b2c3d behind       [m[90m│[m [90mupdate would select tag-pattern v6.6.9 instead of tag-pattern[m  [90m│[m
+[90m│[m u-boot     branch      main    d4e5f6a [33mbehind[m       [90m│[m [90mv6.6.8[m                                                         [90m│[m
+[90m│[m fpga-ip    tag         v2.3.1  0718ab2 [31mdrift[m        [90m│[m HEAD   a1b2c3d4e5f6                                            [90m│[m
+[90m│[m crypto lib commit      3f2a1b0 3f2a1b0 [32mok[m           [90m│[m Lock   v6.6.8 a1b2c3d4e5f6                                     [90m│[m
+[90m│[m legacy     -           -       -       [90munmanaged[m    [90m│[m Target v6.6.9 e4f5a6b7c8d9                                     [90m│[m
+[90m│[m theme      tag         v1.0.0  5e5e000 [90muninitialized[m[90m│[m                                                                [90m│[m
+[90m│[m                                                     [90m│[m [1;36mUpdate adds (1)[m                                                [90m│[m
+[90m│[m                                                     [90m│[m   e4f5a6b Linux v6.6.9                                         [90m│[m
+[90m│[m                                                     [90m│[m                                                                [90m│[m
+[90m│[m                                                     [90m│[m [1;36mLock vs HEAD[m                                                   [90m│[m
+[90m│[m                                                     [90m│[m   HEAD is the locked commit                                    [90m│[m
+[90m│[m                                                     [90m│[m                                                                [90m│[m
+[90m│[m                                                     [90m│[m [1;36mLog[m                                                            [90m│[m
+[90m│[m                                                     [90m│[m   a1b2c3d Linux v6.6.8                                         [90m│[m
+[90m│[m                                                     [90m│[m   9f8e7d6 Linux v6.6.7                                         [90m│[m
+[90m│[m                                                     [90m│[m   8e7d6c5 Linux v6.6.6                                         [90m│[m
+[90m│[m                                                     [90m│[m                                                                [90m│[m
+[90m│[m                                                     [90m│[m [1;36mTags[m                                                           [90m│[m
+[90m│[m                                                     [90m│[m   v6.6.9                                                       [90m│[m
+[90m│[m                                                     [90m│[m   v6.6.8                                                       [90m│[m
+[90m│[m                                                     [90m│[m   v6.6.7                                                       [90m│[m
+[90m│[m                                                     [90m│[m   v6.6.6                                                       [90m│[m
+[90m│[m                                                     [90m│[m                                                                [90m│[m
+[90m│[m                                                     [90m│[m                                                                [90m│[m
+[90m│[m                                                     [90m│[m                                                                [90m│[m
+[90m└─────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────┘[m
+ 6 submodules, 4 not ok                                                                                                 
+ [1;36mu[m update  [1;36mb[m branch  [1;36mt[m tag  [1;36mp[m pattern  [1;36mf[m fetch  [1;36mv[m verify  [1;36mU[m update+commit  [1;36md[m diff  [1;36mr[m reload  [1;36m?[m help  [1;36mq[m quit             

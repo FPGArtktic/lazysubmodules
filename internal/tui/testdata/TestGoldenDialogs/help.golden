@@ -1,0 +1,24 @@
+┌[1m [m[1m[m[m┌[1m Keys [m────────────────────────────────────────────────────────────────────┐[1m[m[1m[m─┐
+│[1m[m[1m[m[1m[m[1m[m[1m[m[1m[m[m[m │ [1mNavigation[m                        [1mSubmodule[m                              │ [1m[m[1m[m[1m[m[1m[m[1m[m[1m[m[m│
+│[7m[m[m │   [1m↑/k    [m up                        [1menter  [m details                     [m │ [7m[m│
+│[m │   [1m↓/j    [m down                      [1mu      [m update                      [m │ │
+│[m │   [1mpgup   [m page up                   [1mU      [m update+commit               [m │ │
+│[m │   [1mpgdn   [m page down                 [1mf      [m fetch                       [m │ │
+│[m │   [1mg      [m first                     [1mv      [m verify                      [m │ │
+│[m │   [1mG      [m last                      [1md      [m diff                        [m │ │
+│[m │                                                                          │ │
+│[m │ [1mTracking[m                          [1mGeneral[m                                │ │
+│[1m[m[m │   [1mb      [m branch                    [1mr      [m reload                      [m │ [1m[m│
+│[m │   [1mt      [m tag                       [1m?      [m help                        [m │ │
+│[m │   [1mp      [m pattern                   [1mq      [m quit                        [m │ │
+│[1m[m[m │                                     [1mctrl+c [m quit now                    [m │ [1m[m│
+│[m │                                                                          │ │
+│[m │ In dialogs, y confirms and n or esc cancels. q closes a dialog, except   │ │
+│[1m[m[m │ in text fields (the pattern dialog and the filter of a list), where it   │ [1m[m│
+│[m │ is text; esc leaves them.                                                │ │
+│[m │ While an operation runs, q asks before quitting; ctrl+c quits at once    │ │
+│[m │ and interrupts the operation.                                            │ │
+│[m │ Only f (fetch) uses the network.                                         │ │
+└─[m└──────────────────────────────────────────────────────────────────────────┘─┘
+ 6 submodules, 4 not ok                                                         
+ [1m↑/k[m up  [1m↓/j[m down  [1mpgup[m page up  [1mpgdn[m page down  [1mesc/q[m close                    

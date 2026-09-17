@@ -1,0 +1,30 @@
+┌[1m Submodules [m─────────────────────────────────────────┬[1m Preview [m───────────────────────────────────────────────────────┐
+│ [1mNAME      [m [1mMODE       [m [1mREF    [m [1mLOCK   [m [1mSTATE        [m│ [1mkernel[m behind                                                  [m│
+│[7m kernel     tag-pattern v6.6.*  a1b2c3d behind       [m│ update would select tag-pattern v6.6.9 instead of tag-pattern  │
+│ u-boot     branch      main    d4e5f6a behind       │ v6.6.8                                                         │
+│ fpga-ip    tag         v2.3.1  0718ab2 drift        │ HEAD   a1b2c3d4e5f6                                            │
+│ crypto lib commit      3f2a1b0 3f2a1b0 ok           │ Lock   v6.6.8 a1b2c3d4e5f6                                     │
+│ legacy     -           -       -       unmanaged    │ Target v6.6.9 e4f5a6b7c8d9                                     │
+│ theme      tag         v1.0.0  5e5e000 uninitialized│                                                                │
+│                                                     │ [1mUpdate adds (1)[m                                                │
+│                                                     │   e4f5a6b Linux v6.6.9                                         │
+│                                                     │                                                                │
+│                                                     │ [1mLock vs HEAD[m                                                   │
+│                                                     │   HEAD is the locked commit                                    │
+│                                                     │                                                                │
+│                                                     │ [1mLog[m                                                            │
+│                                                     │   a1b2c3d Linux v6.6.8                                         │
+│                                                     │   9f8e7d6 Linux v6.6.7                                         │
+│                                                     │   8e7d6c5 Linux v6.6.6                                         │
+│                                                     │                                                                │
+│                                                     │ [1mTags[m                                                           │
+│                                                     │   v6.6.9                                                       │
+│                                                     │   v6.6.8                                                       │
+│                                                     │   v6.6.7                                                       │
+│                                                     │   v6.6.6                                                       │
+│                                                     │                                                                │
+│                                                     │                                                                │
+│                                                     │                                                                │
+└─────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────┘
+ 6 submodules, 4 not ok                                                                                                 
+ [1mu[m update  [1mb[m branch  [1mt[m tag  [1mp[m pattern  [1mf[m fetch  [1mv[m verify  [1mU[m update+commit  [1md[m diff  [1mr[m reload  [1m?[m help  [1mq[m quit             

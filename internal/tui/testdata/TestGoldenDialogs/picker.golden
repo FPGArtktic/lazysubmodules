@@ -1,0 +1,24 @@
+┌[1m Submodules [m─────────────────────────────────────────┬[1m Preview [m───────────────┐
+│ [1mNAME      [m [1mMODE       [m [1mREF    [m [1mLOCK   [m [1mSTATE        [m│ [1mkernel[m behind          [m│
+│[7m kernel     tag-pattern v6.6.*  a1b2c3d behind       [m│ update would select    │
+│ u-boot     branch      main    d4e5f6a behind       │ tag-pattern v6.6.9     │
+│ fpga-ip    tag         v2.3.1  0718ab2 drift        │ instead of tag-pattern │
+│ crypto lib commit      3f2a1b0 3f2a1b0 ok           │ v6.6.8                 │
+│ legacy     -           -       -       unmanaged    │ HEAD   a1b2c3d         │
+│ theme[m ┌[1m Track kernel by tag [m─────────────────────────────────────────┐ 2c3d  │
+│      [m │ 5 of 5; / filters                                            │ 5a6b  │
+│      [m │ [7m> v6.7-rc1                                                  [m │       │
+│      [1m[m[m │   v6.6.10                                                    │ [1m[m      │
+│      [m │   v6.6.9                                                     │ 6.6.9 │
+│      [m │   v6.6.8                                                     │       │
+│      [1m[m[m │   v6.6.1                                                     │ [1m[m      │
+│      [m └──────────────────────────────────────────────────────────────┘ ked c…│
+│                                                     │                        │
+│                                                     │ [1mLog[m                    │
+│                                                     │   a1b2c3d Linux v6.6.8 │
+│                                                     │   9f8e7d6 Linux v6.6.7 │
+│                                                     │   8e7d6c5 Linux v6.6.6 │
+│                                                     │                        │
+└─────────────────────────────────────────────────────┴────────────────────────┘
+ 6 submodules, 4 not ok                                                         
+ [1m↑/k[m up  [1m↓/j[m down  [1m/[m filter  [1menter[m choose  [1mesc/q[m close                          

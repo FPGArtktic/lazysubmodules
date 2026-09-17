@@ -1,0 +1,24 @@
+┌[1m Submodules [m─────────────────────────────────────────┬[1m Preview [m───────────────┐
+│ [1mNAME      [m [1mMODE       [m [1mREF    [m [1mLOCK   [m [1mSTATE        [m│ [1mkernel[m behind          [m│
+│[7m kernel     tag-pattern v6.6.*  a1b2c3d behind       [m│ update would select    │
+│ u-boot     branch      main    d4e5f6a behind       │ tag-pattern v6.6.9     │
+│ fpga-ip    tag         v2.3.1  0718ab2 drift        │ instead of tag-pattern │
+│ crypto lib commit      3f2a1b0 3f2a1b0 ok           │ v6.6.8                 │
+│ legacy     -           -       -       unmanaged    │ HEAD   a1b2c3d         │
+│ theme      tag         v1.0.0  5e5e000 uninitialized│ Lock   v6.6.8 a1b2c3d  │
+│                                                     │ Target v6.6.9 e4f5a6b  │
+│                                                     │                        │
+│                                                     │ [1mUpdate adds (1)[m        │
+│                                                     │   e4f5a6b Linux v6.6.9 │
+│                                                     │                        │
+│                                                     │ [1mLock vs HEAD[m           │
+│                                                     │   HEAD is the locked c…│
+│                                                     │                        │
+│                                                     │ [1mLog[m                    │
+│                                                     │   a1b2c3d Linux v6.6.8 │
+│                                                     │   9f8e7d6 Linux v6.6.7 │
+│                                                     │   8e7d6c5 Linux v6.6.6 │
+│                                                     │                        │
+└─────────────────────────────────────────────────────┴────────────────────────┘
+ 6 submodules, 4 not ok                                                         
+ [1mu[m update  [1mb[m branch  [1mt[m tag  [1mp[m pattern  [1mf[m fetch  [1mv[m verify  [1m?[m help  [1mq[m quit        
