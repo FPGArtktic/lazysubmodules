@@ -489,7 +489,7 @@ Signed-off-by: Name <email>
 | `scripts` | `scripts/`, including the demo and the recording script |
 | `ci` | `.github/workflows/ci.yml` |
 | `release` | `.goreleaser.yaml`, `.github/workflows/release.yml`, `packaging/` |
-| `docs` | `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `DCO`, `docs/` (recordings and tapes), `examples/`, the issue forms and the pull request template in `.github/` |
+| `docs` | `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `DCO`, `docs/` (recordings, tapes, images), `examples/`, the issue forms and the pull request template in `.github/` |
 
 No other prefixes are accepted. The release changelog is grouped by these
 prefixes.
@@ -829,6 +829,7 @@ AUR; only then does the README link to it:
 | `.github/ISSUE_TEMPLATE/config.yml` | Turns off blank issues, and links to the security policy and the README |
 | `.github/pull_request_template.md` | Summary, testing, and a checklist of the rules in this guide |
 | `SECURITY.md` | Supported versions, private reporting of vulnerabilities, response goals and scope |
+| `docs/assets/social-preview.svg` and `.png` | The social preview image of the repository |
 
 - **Consistency:** when a rule in this guide changes, such as the prefix
   list or a command, update the pull request template as well; when the
@@ -836,8 +837,15 @@ AUR; only then does the README link to it:
 - **Repository settings:** `SECURITY.md` sends reporters to private
   vulnerability reporting (Settings, Advanced Security), which provides
   the "Report a vulnerability" button; keep it turned on. Without it,
-  reporters can only use the e-mail address in `SECURITY.md`. The forms
-  use the labels `bug` and `enhancement`; keep them in the repository.
+  reporters can only use the e-mail address in `SECURITY.md`. The social
+  preview is uploaded under Settings, General. The forms use the labels
+  `bug` and `enhancement`; keep them in the repository.
+- **Social preview:** edit the SVG, then render the PNG (1280 × 640
+  pixels) and commit both:
+
+  ```sh
+  rsvg-convert -w 1280 -h 640 -o docs/assets/social-preview.png docs/assets/social-preview.svg
+  ```
 
 ## Stable interfaces
 

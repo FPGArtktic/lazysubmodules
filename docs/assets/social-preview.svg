@@ -1,0 +1,153 @@
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com> -->
+<!--
+  Social preview of the GitHub repository (1280x640). Render the PNG that
+  GitHub needs with: rsvg-convert -w 1280 -h 640 -o social-preview.png social-preview.svg
+  The table shows the terminal interface on the superproject of scripts/demo.sh.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">LazySubmodules</title>
+  <desc id="desc">Track git submodules by branch, tag, tag pattern or commit. A terminal window shows the submodule table of the LazySubmodules terminal interface. License: GPL-3.0-only.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f1722"/>
+      <stop offset="1" stop-color="#090c10"/>
+    </linearGradient>
+    <radialGradient id="glow-green" cx="0.12" cy="0.05" r="0.6">
+      <stop offset="0" stop-color="#3fb950" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#3fb950" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow-cyan" cx="0.92" cy="0.95" r="0.55">
+      <stop offset="0" stop-color="#39c5cf" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#39c5cf" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="logo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#56d364"/>
+      <stop offset="1" stop-color="#39c5cf"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#glow-green)"/>
+  <rect width="1280" height="640" fill="url(#glow-cyan)"/>
+
+  <!-- Logo: a branch that leads to a tag. -->
+  <g transform="translate(72 58)">
+    <rect width="96" height="96" rx="24" fill="url(#logo)"/>
+    <g fill="none" stroke="#0d1117" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M28 20 V76"/>
+      <path d="M28 60 C28 46 34 40 46 40"/>
+      <path d="M50 28 H68 L80 40 L68 52 H50 Z"/>
+    </g>
+    <circle cx="28" cy="20" r="7" fill="#0d1117"/>
+    <circle cx="28" cy="76" r="7" fill="#0d1117"/>
+    <circle cx="67" cy="40" r="3.5" fill="#0d1117"/>
+  </g>
+
+  <g font-family="'Noto Sans', 'DejaVu Sans', 'Liberation Sans', 'Helvetica Neue', Arial, sans-serif">
+    <text x="192" y="136" font-size="86" font-weight="700" fill="#f0f6fc" letter-spacing="-1"><tspan fill="#56d364">Lazy</tspan>Submodules</text>
+
+    <!-- Tagline: "Track git submodules by branch, tag, tag pattern or commit". -->
+    <g font-size="38" fill="#c9d1d9">
+      <text x="72" y="252">Track git submodules</text>
+      <text x="72" y="302">by <tspan fill="#56d364" font-weight="700">branch</tspan>, <tspan fill="#56d364" font-weight="700">tag</tspan>,</text>
+      <text x="72" y="352"><tspan fill="#56d364" font-weight="700">tag pattern</tspan> or <tspan fill="#56d364" font-weight="700">commit</tspan></text>
+    </g>
+
+    <g font-size="24" fill="#8b949e">
+      <circle cx="80" cy="420" r="5" fill="#39c5cf"/>
+      <text x="98" y="428">Lock file catches moved tags</text>
+      <circle cx="80" cy="460" r="5" fill="#39c5cf"/>
+      <text x="98" y="468">CLI for scripts, TUI for people</text>
+      <circle cx="80" cy="500" r="5" fill="#39c5cf"/>
+      <text x="98" y="508">Network only for fetch and add</text>
+    </g>
+
+    <!-- License badge. -->
+    <g transform="translate(72 548)" font-size="20">
+      <rect width="296" height="36" rx="6" fill="#1f6feb"/>
+      <path d="M6 0 H104 V36 H6 A6 6 0 0 1 0 30 V6 A6 6 0 0 1 6 0 Z" fill="#30363d"/>
+      <text x="52" y="25" text-anchor="middle" fill="#f0f6fc">license</text>
+      <text x="200" y="25" text-anchor="middle" fill="#ffffff" font-weight="700">GPL-3.0-only</text>
+    </g>
+  </g>
+
+  <!-- Terminal window with the table of the terminal interface. -->
+  <g filter="url(#shadow)">
+    <rect x="548" y="196" width="660" height="388" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="2"/>
+  </g>
+  <path d="M549 236 V208 A11 11 0 0 1 560 197 H1196 A11 11 0 0 1 1207 208 V236 Z" fill="#161b22"/>
+  <line x1="549" y1="236" x2="1207" y2="236" stroke="#30363d" stroke-width="2"/>
+  <circle cx="574" cy="216" r="7" fill="#ff5f57"/>
+  <circle cx="598" cy="216" r="7" fill="#febc2e"/>
+  <circle cx="622" cy="216" r="7" fill="#28c840"/>
+
+  <g font-family="'Noto Sans Mono', 'DejaVu Sans Mono', 'Liberation Mono', Menlo, Consolas, monospace">
+    <text x="878" y="222" font-size="17" text-anchor="middle" fill="#8b949e">lazysubmodules tui</text>
+
+    <rect x="568" y="256" width="620" height="246" rx="4" fill="none" stroke="#484f58" stroke-width="1.5"/>
+    <rect x="578" y="246" width="130" height="20" fill="#0d1117"/>
+    <text x="584" y="262" font-size="18" font-weight="700" fill="#39c5cf">Submodules</text>
+
+    <g font-size="18" fill="#c9d1d9">
+      <g font-weight="700" fill="#39c5cf">
+        <text x="584" y="292">NAME</text>
+        <text x="709" y="292">MODE</text>
+        <text x="845" y="292">REF</text>
+        <text x="937" y="292">LOCK</text>
+        <text x="1027" y="292">STATE</text>
+      </g>
+
+      <rect x="576" y="301" width="604" height="26" fill="#c9d1d9"/>
+      <g fill="#0d1117">
+        <text x="584" y="320">kernel</text>
+        <text x="709" y="320">tag-pattern</text>
+        <text x="845" y="320">v6.6.*</text>
+        <text x="937" y="320">8106f61</text>
+        <text x="1027" y="320">behind</text>
+      </g>
+
+      <text x="584" y="348">u-boot</text>
+      <text x="709" y="348">branch</text>
+      <text x="845" y="348">main</text>
+      <text x="937" y="348">29b295c</text>
+      <text x="1027" y="348" fill="#d29922">behind</text>
+
+      <text x="584" y="376">fpga.core</text>
+      <text x="709" y="376">tag</text>
+      <text x="845" y="376">v2.3.1</text>
+      <text x="937" y="376">556baa1</text>
+      <text x="1027" y="376" fill="#f85149">drift</text>
+
+      <text x="584" y="404">crypto lib</text>
+      <text x="709" y="404">commit</text>
+      <text x="845" y="404">5da6927</text>
+      <text x="937" y="404">5da6927</text>
+      <text x="1027" y="404" fill="#3fb950">ok</text>
+
+      <text x="584" y="432">app</text>
+      <text x="709" y="432">tag</text>
+      <text x="845" y="432">v1.2.0</text>
+      <text x="937" y="432">cfa9d86</text>
+      <text x="1027" y="432" fill="#bc8cff">dirty</text>
+
+      <text x="584" y="460">legacy</text>
+      <text x="709" y="460">-</text>
+      <text x="845" y="460">-</text>
+      <text x="937" y="460">-</text>
+      <text x="1027" y="460" fill="#8b949e">unmanaged</text>
+
+      <text x="584" y="488">theme</text>
+      <text x="709" y="488">tag</text>
+      <text x="845" y="488">v1.0.0</text>
+      <text x="937" y="488">05f49f3</text>
+      <text x="1027" y="488" fill="#8b949e">uninitialized</text>
+    </g>
+
+    <text x="572" y="530" font-size="17" fill="#8b949e">7 submodules, 5 not ok</text>
+    <text x="572" y="562" font-size="17" fill="#c9d1d9" xml:space="preserve"><tspan fill="#39c5cf" font-weight="700">u</tspan> update  <tspan fill="#39c5cf" font-weight="700">t</tspan> tag  <tspan fill="#39c5cf" font-weight="700">p</tspan> pattern  <tspan fill="#39c5cf" font-weight="700">f</tspan> fetch  <tspan fill="#39c5cf" font-weight="700">v</tspan> verify  <tspan fill="#39c5cf" font-weight="700">?</tspan> help</text>
+  </g>
+</svg>

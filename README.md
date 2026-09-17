@@ -1038,7 +1038,7 @@ under the terms of the GNU General Public License, version 3 only
 (`GPL-3.0-only`), as published by the Free Software Foundation. See
 [LICENSE](LICENSE) for the full text. The same license covers the
 documentation and the images in [`docs/`](docs/), such as the demo
-recordings.
+recordings and the social preview.
 
 The release binaries also contain the Go standard library and Go modules
 under the BSD-3-Clause and MIT licenses. Their notices and license texts
