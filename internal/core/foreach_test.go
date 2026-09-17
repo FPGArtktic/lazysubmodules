@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -181,6 +182,70 @@ func TestForeachCancelSendsSigterm(t *testing.T) {
 	}
 	if d := time.Since(start); d > 5*time.Second {
 		t.Errorf("Foreach returned %v after the cancellation", d)
+	}
+}
+
+// readyWriter collects output, safe for concurrent use, and closes ready
+// once the output contains a line "ready". Unlike an *os.File, it makes
+// exec.Cmd copy the output through a pipe.
+type readyWriter struct {
+	mu    sync.Mutex
+	out   strings.Builder
+	ready chan struct{}
+}
+
+// Write implements io.Writer.
+func (w *readyWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	seen := strings.Contains(w.out.String(), "ready\n")
+	n, err := w.out.Write(p)
+	if !seen && strings.Contains(w.out.String(), "ready\n") {
+		close(w.ready)
+	}
+	return n, err
+}
+
+// String returns the output so far.
+func (w *readyWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.out.String()
+}
+
+func TestForeachCancelStopsDescendants(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gittest.SHA1)
+	f.add("a", manifest.ModeTag, gittest.TagV100)
+	r := f.repo()
+	out := &readyWriter{ready: make(chan struct{})}
+	// The inner shell inherits the output pipe and prints "ready" once it
+	// runs; Foreach can only return when it is stopped as well.
+	script := `trap 'echo got-term; exit 3' TERM; sh -c 'echo ready; exec sleep 30' & wait`
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- r.Foreach(ctx, core.ForeachOptions{Args: []string{"sh", "-c", script},
+			Stdout: out})
+	}()
+	select {
+	case <-out.ready:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the command did not start")
+	}
+	start := time.Now()
+	cancel()
+	err := <-done
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("Foreach returned %v after the cancellation", d)
+	}
+	exitErr, ok := errors.AsType[*exec.ExitError](err)
+	if !ok || exitErr.ExitCode() != 3 || !strings.HasPrefix(err.Error(), "a: sh: ") {
+		t.Errorf("Foreach = %v, want exit status 3 from the trap", err)
+	}
+	if got := out.String(); got != "ready\ngot-term\n" {
+		t.Errorf("output %q, want the SIGTERM trap", got)
 	}
 }
 

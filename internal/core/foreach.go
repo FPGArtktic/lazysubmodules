@@ -58,7 +58,8 @@ type ForeachOptions struct {
 //   - LSM_MODE and LSM_REF: the tracking mode and the configured ref.
 //
 // Context: the commands may do anything, including network access; a
-// canceled context stops the running command with SIGTERM.
+// canceled context stops the running command and the processes it started
+// with SIGTERM, and kills the command if it has not exited 10 s later.
 // Return: nil when every command succeeded; an error wrapping
 // ErrInvalidArgument when opts.Args is empty; an error naming the
 // submodule and wrapping the failure of the command, such as
@@ -123,8 +124,10 @@ func (r *Repo) runIn(ctx context.Context, sub manifest.Submodule, env []string,
 		"LSM_REF="+sub.Ref,
 	)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = opts.Stdin, opts.Stdout, opts.Stderr
+	// The processes that the command started get the signal too, so that
+	// none keeps running and holds the output streams open.
 	cmd.Cancel = func() error {
-		return cmd.Process.Signal(syscall.SIGTERM)
+		return git.SignalTree(cmd.Process, syscall.SIGTERM)
 	}
 	cmd.WaitDelay = commandWaitDelay
 	if err := cmd.Run(); err != nil {
