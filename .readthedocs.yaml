@@ -1,20 +1,24 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
 #
-# Read the Docs configuration.
-#
-# For now the site is README.md rendered to a single page by
-# scripts/rtd-readme-page, with the demo GIFs next to it. A full documentation
-# site will replace this build command.
+# Read the Docs build of the documentation site in docs/ (Sphinx with the Furo
+# theme, warnings are errors). The same build runs in a container as
+# "scripts/build-in-container.sh docs", and CI runs that on every pull request;
+# docs/project/documentation.md describes both.
 version: 2
 
 build:
   os: ubuntu-24.04
   tools:
     python: "3.13"
-  # Read the Docs does not run build commands through a regular shell: pipes
-  # and backslash escapes do not survive, and every command starts in a new
-  # process. The script therefore does all the work, including the pinned
-  # Python-Markdown installation.
-  commands:
-    - python scripts/rtd-readme-page
+
+sphinx:
+  configuration: docs/conf.py
+  # Clean URLs such as /guide/update/ instead of /guide/update.html.
+  builder: dirhtml
+  fail_on_warning: true
+
+python:
+  install:
+    # Exact versions with hashes, generated from docs/requirements.in.
+    - requirements: docs/requirements.txt
