@@ -143,7 +143,7 @@ type UpdateResult struct {
 // Update refuses when a selected submodule has uncommitted changes, has no
 // gitlink in the index, has a path through a symbolic link, is not
 // initialized and cannot be initialized offline (no repository, or one
-// that lacks the commit recorded in the superproject), or has an invalid
+// that lacks the recorded commit or objects of it), or has an invalid
 // or missing ref, and, with opts.Commit, when the index holds staged
 // changes of other paths than .gitmodules, the lock file and the selected
 // submodules. These checks run for every selected submodule before
@@ -163,7 +163,7 @@ type UpdateResult struct {
 // values back; initialized submodules stay initialized.
 //
 // Context: without opts.Fetch, only local refs are consulted and nothing
-// uses the network.
+// uses the network, not even to fetch objects that a partial clone lacks.
 // Return: the changes and the new commit; an empty result when there is no
 // managed submodule and no name is given; an error wrapping ErrNotFound or
 // ErrUnmanaged for a name that cannot be updated; an error joining the
@@ -347,11 +347,11 @@ func (u *updater) checkState(ctx context.Context, s *step) error {
 
 // checkInit plans the initialization of a submodule that is not populated.
 // Without Fetch, the submodule repository must exist and hold the commit
-// that the index records, since the initialization checks that commit out
-// and may not fetch it. Git cannot run in a repository that names a working
-// tree directory that was removed; outside a dry run, that directory is
-// created again first. A repository that git still cannot run in is
-// checked by the initialization itself.
+// that the index records, with all its objects, since the initialization
+// checks that commit out and may not fetch anything. Git cannot run in a
+// repository that names a working tree directory that was removed; outside
+// a dry run, that directory is created again first. A repository that git
+// still cannot run in is checked by the initialization itself.
 func (u *updater) checkInit(ctx context.Context, s *step) error {
 	name := s.change.Submodule.Name
 	exists, err := isDir(s.loc.gitDir)
@@ -373,13 +373,17 @@ func (u *updater) checkInit(ctx context.Context, s *step) error {
 	if !s.loc.hasRepo() {
 		return nil
 	}
-	_, err = u.repo.git.ResolveCommit(ctx, s.loc.gitDir, s.loc.gitlink)
-	if errors.Is(err, git.ErrRefNotFound) {
-		s.refusal = fmt.Errorf("%s: %w: its repository lacks the recorded commit %s",
-			displayName(name), ErrUninitialized, abbrev(s.loc.gitlink))
-		return nil
+	missing, err := u.repo.git.MissingObjects(ctx, s.loc.gitDir, s.loc.gitlink)
+	lacks := "objects of the recorded commit"
+	switch {
+	case errors.Is(err, git.ErrRefNotFound):
+		lacks = "the recorded commit"
+	case err != nil || len(missing) == 0:
+		return err
 	}
-	return err
+	s.refusal = fmt.Errorf("%s: %w: its repository lacks %s %s", displayName(name),
+		ErrUninitialized, lacks, abbrev(s.loc.gitlink))
+	return nil
 }
 
 // recreateWorktree creates the missing working tree directory of a
@@ -595,12 +599,19 @@ func (u *updater) checkout(ctx context.Context, undo *applyUndo) error {
 		if s.head == s.change.New.Commit {
 			continue
 		}
-		if err := u.repo.git.Checkout(ctx, s.loc.worktree, s.change.New.Commit, git.Online); err != nil {
+		err := u.repo.git.Checkout(ctx, s.loc.worktree, s.change.New.Commit, u.network())
+		if err != nil {
 			return wrapName(s.change.Submodule.Name, err)
 		}
 		undo.moved = append(undo.moved, s)
 	}
 	return nil
+}
+
+// network returns the network mode of the checkouts: a partial clone may
+// fetch the objects it lacks only when the update fetches anyway.
+func (u *updater) network() git.Network {
+	return git.Network(u.opts.Fetch)
 }
 
 // write stores the lock entry and the native branch key of a step when
@@ -689,7 +700,7 @@ func (u *updater) restore(ctx context.Context, moved []*step) error {
 		if s.head == "" {
 			continue
 		}
-		if err := u.repo.git.Checkout(ctx, s.loc.worktree, s.head, git.Online); err != nil {
+		if err := u.repo.git.Checkout(ctx, s.loc.worktree, s.head, u.network()); err != nil {
 			errs = append(errs, wrapName(s.change.Submodule.Name,
 				fmt.Errorf("restore %s: %w", abbrev(s.head), err)))
 		}
