@@ -388,23 +388,44 @@ Shell scripts (`*.sh`) put the header on lines 2–3, after the shebang:
 # Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
 ```
 
-YAML, INI and similar configuration files (`Containerfile`, `.gitignore`,
-`.gitlint`, ...) use lines 1–2:
+Other files that start with a `#!` line, whatever the interpreter, have
+the header on lines 2–3 as well.
+
+These files use lines 1–2:
 
 ```sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
 ```
 
-Markdown files use HTML comments on lines 1–2:
+- YAML, TOML, INI and similar configuration files: `Containerfile`,
+  `.gitignore`, `.gitlint`, ...;
+- the example `.gitmodules` and `.lsm.lock` in `examples/`;
+- text files (`*.txt`), such as the demo transcript;
+- the AUR recipe (`PKGBUILD`);
+- VHS tapes (`*.tape`).
+
+Markdown files and SVG images use HTML comments on lines 1–2; an SVG image
+therefore has no XML declaration:
 
 ```html
 <!-- SPDX-License-Identifier: GPL-3.0-only -->
 <!-- Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com> -->
 ```
 
-Exempt files: `LICENSE`, `DCO`, `go.sum`, everything under `vendor/`, and
-test data under `testdata/` (including `*.golden` files).
+Exempt files:
+
+- `LICENSE`, `DCO`, `go.sum` and everything under `vendor/`;
+- test data under `testdata/`, including `*.golden` files.
+
+Files that cannot have a header are checked in another way:
+
+- **Images** have no comments. GIF images are allowed only directly in
+  `docs/demo/` and PNG images only directly in `docs/assets/`, and they
+  must start with the GIF or PNG signature.
+- **AUR recipe directories** under `packaging/aur/`: `LICENSE` must be an
+  exact copy of the top-level `LICENSE`, and `.SRCINFO`, which `makepkg`
+  generates, must start with `pkgbase = `.
 
 `scripts/check-headers.sh`, which is part of the `lint` target, checks every
 tracked or new file. It reports files of an unknown type, so a new kind of

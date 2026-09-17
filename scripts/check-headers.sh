@@ -9,14 +9,26 @@
 #
 #   Go (*.go, go.mod):  "// SPDX-..." and "// Copyright ..." on lines 1-2,
 #                       line 3 empty
-#   Markdown (*.md):    "<!-- SPDX-... -->" and "<!-- Copyright ... -->"
+#   Markdown (*.md):    "<!-- SPDX-... -->" and "<!-- Copyright ... -->";
+#                       also SVG images (*.svg), without an XML declaration
 #   Shell (*.sh):       "#!/usr/bin/env bash", then "# SPDX-..." and
 #                       "# Copyright ..." on lines 2-3
 #   Other scripts:      any "#!" line, then the "#" header on lines 2-3
-#   Config files:       "# SPDX-..." and "# Copyright ..." on lines 1-2
+#   Config files:       "# SPDX-..." and "# Copyright ..." on lines 1-2;
+#                       also the example .gitmodules and .lsm.lock files and
+#                       text files (*.txt) such as the demo transcript;
+#                       also the AUR recipe (PKGBUILD) and VHS tapes (*.tape)
 #
 # LICENSE, DCO, go.sum, vendor/, testdata/ and *.golden are exempt. Files of
 # any other type are reported, so that a header rule is added for them.
+# Files that cannot carry a header are checked in other ways:
+#
+#   Images:             GIF images directly in docs/demo/ and PNG images
+#                       directly in docs/assets/ only, which must start with
+#                       the GIF or PNG signature; they have no comments
+#   AUR recipes:        packaging/aur/<package>/LICENSE must be a copy of
+#                       LICENSE, and packaging/aur/<package>/.SRCINFO, which
+#                       makepkg generates, must start with "pkgbase = "
 #
 # Usage: scripts/check-headers.sh [-h]
 #
@@ -52,25 +64,92 @@ is_exempt()
 	return 1
 }
 
+# starts_with FILE COUNT HEX-PATTERN
+#
+# Return 0 when the first COUNT bytes of FILE, written as lowercase
+# hexadecimal digits, match the glob HEX-PATTERN.
+starts_with()
+{
+	local head
+
+	head="$(head -c "$2" -- "$1" | od -An -v -tx1 | tr -d ' \n')" || return 1
+	# shellcheck disable=SC2053 # the pattern is a glob on purpose
+	[[ "$head" == $3 ]]
+}
+
+# check_special FILE STYLE LINE1
+#
+# Check a file of STYLE image, aur-license or aur-srcinfo, which cannot
+# carry a header (see the header comment). LINE1 is the first line of FILE.
+# Return: 0 when the file is correct.
+check_special()
+{
+	local file="$1"
+
+	case "$2:$file" in
+	image:docs/demo/*/* | image:docs/assets/*/*) ;;
+	image:docs/demo/*.gif)
+		# "GIF87a" or "GIF89a"
+		starts_with "$file" 6 '474946383[79]61' && return 0
+		report "$file" "not a GIF image"
+		return 1
+		;;
+	image:docs/assets/*.png)
+		# "\x89PNG\r\n\x1a\n"
+		starts_with "$file" 8 '89504e470d0a1a0a' && return 0
+		report "$file" "not a PNG image"
+		return 1
+		;;
+	aur-license:*)
+		cmp -s -- "$file" LICENSE && return 0
+		report "$file" "must be a copy of LICENSE"
+		return 1
+		;;
+	aur-srcinfo:*)
+		[[ "$3" == "pkgbase = "* ]] && return 0
+		report "$file" "must be the output of 'makepkg --printsrcinfo'"
+		return 1
+		;;
+	esac
+	report "$file" "images belong in docs/demo/ (GIF) or docs/assets/ (PNG)"
+	return 1
+}
+
 # header_style FILE LINE1
 #
 # Print the comment style of FILE: go, markdown, shell, script, hash or
-# unknown. LINE1 is the first line of the file.
+# unknown, or image, aur-license or aur-srcinfo for the files without a
+# header. LINE1 is the first line of the file.
 header_style()
 {
+	case "$1" in
+	packaging/aur/*/*/*) ;;
+	packaging/aur/*/LICENSE)
+		echo aur-license
+		return
+		;;
+	packaging/aur/*/.SRCINFO)
+		echo aur-srcinfo
+		return
+		;;
+	esac
 	case "${1##*/}" in
 	*.go | go.mod | go.work)
 		echo go
 		;;
-	*.md)
+	*.md | *.svg)
 		echo markdown
+		;;
+	*.gif | *.png)
+		echo image
 		;;
 	*.sh | *.bash)
 		echo shell
 		;;
 	*.yml | *.yaml | *.toml | *.ini | *.cfg | *.conf | \
 		Containerfile | Dockerfile | Makefile | .containerignore | .dockerignore | \
-		.gitignore | .gitattributes | .gitlint | .editorconfig)
+		.gitignore | .gitattributes | .gitlint | .editorconfig | \
+		.gitmodules | .lsm.lock | *.txt | PKGBUILD | *.tape)
 		echo hash
 		;;
 	*)
@@ -89,7 +168,7 @@ header_style()
 check_file()
 {
 	local file="$1"
-	local l1="" l2="" l3=""
+	local l1="" l2="" l3="" style
 
 	{
 		IFS= read -r l1 || true
@@ -97,7 +176,11 @@ check_file()
 		IFS= read -r l3 || true
 	} <"$file"
 
-	case "$(header_style "$file" "$l1")" in
+	style="$(header_style "$file" "$l1")"
+	case "$style" in
+	image | aur-license | aur-srcinfo)
+		check_special "$file" "$style" "$l1" || return 1
+		;;
 	go)
 		if [[ "$l1" != "// ${SPDX}" || "$l2" != "// ${COPYRIGHT}" ]]; then
 			report "$file" "lines 1-2 must be the '//' SPDX and copyright header"
