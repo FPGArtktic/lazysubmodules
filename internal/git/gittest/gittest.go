@@ -10,6 +10,12 @@
 // explicitly, never through the process environment, so the helpers are safe
 // in parallel tests.
 //
+// Besides small building blocks, the package provides scenario fixtures
+// (NewComplexSuper, NewLinkedWorktreeSuper, NewNestedSuper, NewUnbornSuper,
+// NewManySuper and NewHostileSuper) that build whole superprojects; their
+// documentation describes what they contain and how long they take to
+// build.
+//
 // The package must only be imported from _test.go files.
 package gittest
 
@@ -122,7 +128,14 @@ func Runner(t testing.TB, config ...string) *git.Runner {
 // Return: the standard output without surrounding white space.
 func Git(t testing.TB, dir string, args ...string) string {
 	t.Helper()
-	out, err := Runner(t).Run(t.Context(), dir, args...)
+	return mustRun(t, Runner(t), dir, args...)
+}
+
+// mustRun runs git with g in dir, fails the test when git fails and returns
+// the standard output without surrounding white space.
+func mustRun(t testing.TB, g *git.Runner, dir string, args ...string) string {
+	t.Helper()
+	out, err := g.Run(t.Context(), dir, args...)
 	if err != nil {
 		if gitErr, ok := errors.AsType[*git.Error](err); ok {
 			t.Fatalf("gittest: %v\n%s", err, gitErr.Stderr)

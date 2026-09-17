@@ -101,12 +101,19 @@ func NewTaggedUpstream(t testing.TB, format string) (*Upstream, map[string]strin
 // Return: the commit SHA.
 func (u *Upstream) Commit(t testing.TB, msg string) string {
 	t.Helper()
-	u.commits++
-	WriteFile(t, filepath.Join(u.Work, TrackedFile),
-		"commit "+strconv.Itoa(u.commits)+": "+msg+"\n")
+	u.writeNext(t, msg)
 	sha := commitAll(t, u.Work, msg)
 	Git(t, u.Work, "push", "--quiet", "origin", "HEAD:refs/heads/main")
 	return sha
+}
+
+// writeNext writes the unique content of the next commit to TrackedFile in
+// Work.
+func (u *Upstream) writeNext(t testing.TB, msg string) {
+	t.Helper()
+	u.commits++
+	WriteFile(t, filepath.Join(u.Work, TrackedFile),
+		"commit "+strconv.Itoa(u.commits)+": "+msg+"\n")
 }
 
 // Branch creates or moves a branch (not main) to rev and force-pushes it.
@@ -248,7 +255,13 @@ func (s *Super) Deinit(t testing.TB, path string) {
 // Return: nothing; fails the test on error.
 func (s *Super) MakeDirty(t testing.TB, path string) {
 	t.Helper()
-	file := filepath.Join(s.Dir, path, TrackedFile)
+	makeDirty(t, filepath.Join(s.Dir, path))
+}
+
+// makeDirty modifies TrackedFile in the working tree dir.
+func makeDirty(t testing.TB, dir string) {
+	t.Helper()
+	file := filepath.Join(dir, TrackedFile)
 	data, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatalf("gittest: %v", err)
