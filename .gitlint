@@ -6,6 +6,9 @@
 
 [general]
 contrib = contrib-body-requires-signed-off-by
+# Anchored regexes behave the same with search semantics, which gitlint will
+# make the default; opting in silences its deprecation warning.
+regex-style-search = true
 
 [title-max-length]
 line-length = 75
@@ -15,3 +18,8 @@ regex = ^(cli|core|git|manifest|lock|porcelain|tui|build|scripts|ci|release|docs
 
 [body-max-line-length]
 line-length = 75
+
+# A Fixes: tag is never wrapped, even when the quoted subject makes it longer
+# than 75 columns. Only tags in the exact format are exempt.
+[ignore-body-lines]
+regex = ^Fixes: [0-9a-f]{12} \(".+"\)$
