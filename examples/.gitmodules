@@ -1,0 +1,113 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+#
+# Example .gitmodules with LazySubmodules tracking keys: the superproject of
+# scripts/demo.sh as the demo leaves it, with illustrative URLs. Git reads
+# path, url, branch, update, ignore and shallow. LazySubmodules adds lsm-mode
+# and lsm-ref, which Git ignores; a submodule without lsm-mode is unmanaged.
+# See examples/README.md.
+
+# The highest stable tag matching the glob; pre-releases such as v6.6.11-rc1
+# count only with --include-prerelease.
+[submodule "kernel"]
+	path = kernel
+	url = https://git.example.org/linux.git
+	lsm-mode = tag-pattern
+	lsm-ref = v6.6.*
+
+# The tip of origin/main. The native branch key, which lazysubmodules writes
+# for branch mode, keeps "git submodule update --remote" on the same branch.
+[submodule "u-boot"]
+	path = bootloader/u-boot
+	url = https://git.example.org/u-boot.git
+	branch = main
+	lsm-mode = branch
+	lsm-ref = main
+
+# One tag. The name contains a dot and differs from the path.
+[submodule "fpga.core"]
+	path = ip/fpga-core
+	url = https://git.example.org/fpga-core.git
+	lsm-mode = tag
+	lsm-ref = v2.3.1
+
+# One commit, always written as the full SHA.
+[submodule "crypto lib"]
+	path = libs/crypto lib
+	url = https://git.example.org/crypto-lib.git
+	lsm-mode = commit
+	lsm-ref = 5da6927f70f5cb5408fe3a77c0aa33877a3062c5
+
+# Unmanaged (no lsm keys) until "lazysubmodules set legacy --branch main".
+[submodule "legacy"]
+	path = vendor/legacy
+	url = https://git.example.org/legacy.git
+	branch = main
+	lsm-mode = branch
+	lsm-ref = main
+
+# A branch other than main; the submodule has a submodule of its own, which
+# LazySubmodules does not manage.
+[submodule "tools"]
+	path = tools/nested
+	url = https://git.example.org/tools.git
+	branch = develop
+	lsm-mode = branch
+	lsm-ref = develop
+
+[submodule "theme"]
+	path = docs/theme
+	url = https://git.example.org/theme.git
+	lsm-mode = tag
+	lsm-ref = v1.0.0
+
+[submodule "fresh"]
+	path = third_party/fresh
+	url = https://git.example.org/fresh.git
+	lsm-mode = tag-pattern
+	lsm-ref = v1.*
+
+[submodule "app"]
+	path = apps/app
+	url = https://git.example.org/app.git
+	lsm-mode = tag
+	lsm-ref = v1.2.0
+
+# Every tag. The lock file records which one was selected.
+[submodule "sdk"]
+	path = sdk
+	url = https://git.example.org/sdk.git
+	lsm-mode = tag-pattern
+	lsm-ref = v*
+
+[submodule "mirror-lib"]
+	path = libs/mirror
+	url = https://git.example.org/mirror-lib.git
+	branch = stable
+	lsm-mode = branch
+	lsm-ref = stable
+
+[submodule "broken"]
+	path = libs/broken
+	url = https://git.example.org/broken.git
+	lsm-mode = tag
+	lsm-ref = v1.0.0
+
+# "lazysubmodules verify --signatures" checks the signature of this tag.
+[submodule "signed"]
+	path = libs/signed
+	url = https://git.example.org/signed.git
+	lsm-mode = tag
+	lsm-ref = v1.0.0
+
+# Native keys stay as they are. LazySubmodules checks the submodule out even
+# with update = none, and its status looks at the real state whatever
+# ignore says.
+[submodule "quirky"]
+	path = libs/quirky
+	url = https://git.example.org/quirky.git
+	update = none
+	ignore = all
+	shallow = true
+	lsm-mode = tag
+	lsm-ref = v1.0.0

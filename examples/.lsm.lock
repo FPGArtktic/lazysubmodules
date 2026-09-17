@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+#
+# Example .lsm.lock that belongs to examples/.gitmodules, as scripts/demo.sh
+# leaves it. lazysubmodules update and add write one section per managed
+# submodule: mode, the resolved ref and the full commit. The ref is the tag
+# a pattern selected (kernel, fresh, sdk), the tag, the branch, or the full
+# commit in commit mode. Entries follow the order in which they were first
+# written; legacy came last. See examples/README.md.
+
+[submodule "kernel"]
+	mode = tag-pattern
+	ref = v6.6.10
+	commit = 08dcd0dc8f98ab3da3943153cad056f346d18ded
+[submodule "u-boot"]
+	mode = branch
+	ref = main
+	commit = 8e9fc7a2511a8a14496d8458128c622ec4615c6e
+[submodule "fpga.core"]
+	mode = tag
+	ref = v2.3.1
+	commit = 7c6069a8a36b168725442e3067e9dee415bf740b
+[submodule "crypto lib"]
+	mode = commit
+	ref = 5da6927f70f5cb5408fe3a77c0aa33877a3062c5
+	commit = 5da6927f70f5cb5408fe3a77c0aa33877a3062c5
+[submodule "tools"]
+	mode = branch
+	ref = develop
+	commit = 3e8e30783478eb8f3bc000bbed9847a034b0f17a
+[submodule "theme"]
+	mode = tag
+	ref = v1.0.0
+	commit = 05f49f3f8b5a18447c1e10f18f28fc7e221d8110
+[submodule "fresh"]
+	mode = tag-pattern
+	ref = v1.1.0
+	commit = f2de3e1ec47a9de1bd0316651efbfce990587c49
+[submodule "app"]
+	mode = tag
+	ref = v1.2.0
+	commit = cfa9d86f3eae90a7660a9ab94d1386902f26fe3d
+[submodule "sdk"]
+	mode = tag-pattern
+	ref = v3.0.0
+	commit = 599ca2ab457637cf8ed802b8581e3a383a191e8b
+[submodule "mirror-lib"]
+	mode = branch
+	ref = stable
+	commit = 71eb52c533ca5105af902ec2f6bab8f0c1d8ac52
+[submodule "broken"]
+	mode = tag
+	ref = v1.0.0
+	commit = 52c4bdbcb500e78dc6ae9826b4b478165afa96b9
+[submodule "signed"]
+	mode = tag
+	ref = v1.0.0
+	commit = 5d1133e0516f426db2702661540e7f92fa4b4c89
+[submodule "quirky"]
+	mode = tag
+	ref = v1.0.0
+	commit = 64eca61e3a67b19004201c98582e249fda26b9f6
+[submodule "legacy"]
+	mode = branch
+	ref = main
+	commit = 2f54e11fe5a9c2cf222f3d113338e7e53ddc3620

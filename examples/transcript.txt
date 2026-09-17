@@ -1,0 +1,510 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+#
+# Transcript of scripts/demo.sh, which writes it with
+#   scripts/demo.sh --no-pause --transcript FILE
+# $DEMO stands for the demo directory. Only lazysubmodules commands
+# are followed by their exit status.
+
+LazySubmodules demo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Demo directory: $DEMO (temporary, removed at the end)
+Building the upstream repositories and the superproject...
+
+The superproject "firmware" has five commits and fourteen submodules.
+Their upstream repositories are bare repositories in $DEMO/mirror.
+Every URL in .gitmodules starts with https://git.example.invalid/,
+a host that does not exist; url.<base>.insteadOf rewrites it to that
+directory, as it would for a company mirror. Git may use the file
+transport only, so nothing in this demo reaches the network.
+
+  SUBMODULE   PATH               TRACKS              SITUATION
+  kernel      kernel             tag-pattern v6.6.*  newer v6.6.x tag available
+  u-boot      bootloader/u-boot  branch main         upstream moved on
+  fpga.core   ip/fpga-core       tag v2.3.1          dotted name, tag will move
+  crypto lib  libs/crypto lib    commit 5da6927      spaces in name and path
+  legacy      vendor/legacy      -                   not managed
+  tools       tools/nested       branch develop      has a nested submodule
+  theme       docs/theme         tag v1.0.0          deinitialized, repo kept
+  fresh       third_party/fresh  tag-pattern v1.*    never cloned
+  app         apps/app           tag v1.2.0          uncommitted change
+  sdk         sdk                tag-pattern v*      locked at a pre-release
+  mirror-lib  libs/mirror        branch stable       branch other than main
+  broken      libs/broken        tag v9.9.9          tag does not exist
+  signed      libs/signed        tag v1.0.0          SSH-signed tag
+  quirky      libs/quirky        tag v1.0.0          update=none, shallow
+
+
+━━ 1. The superproject ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Tracking settings live in .gitmodules, next to Git's own keys, and
+.lsm.lock records what each submodule was resolved to. Both files
+are plain git-config files, committed with the gitlinks.
+
+$ git log --oneline
+8710bae manifest: update kernel to v6.6.9
+d81e465 track submodules with lazysubmodules
+cd2be13 add theme, fresh, app, sdk, mirror-lib, broken, signed and quirky
+7f8c7a1 add kernel, u-boot, fpga.core, crypto lib, legacy and tools
+6526414 initial commit
+
+$ head -n 11 .gitmodules
+[submodule "kernel"]
+	path = kernel
+	url = https://git.example.invalid/linux.git
+	lsm-mode = tag-pattern
+	lsm-ref = v6.6.*
+[submodule "u-boot"]
+	path = bootloader/u-boot
+	url = https://git.example.invalid/u-boot.git
+	branch = main
+	lsm-mode = branch
+	lsm-ref = main
+
+$ head -n 4 .lsm.lock
+[submodule "kernel"]
+	mode = tag-pattern
+	ref = v6.6.9
+	commit = 8106f614767a75b6567271b1db80d6ade3acb7fb
+
+The kernel follows the newest stable v6.6.x tag, which was v6.6.9 at
+the last update. u-boot follows the branch main, and the native key
+"branch" keeps "git submodule update --remote" working without
+LazySubmodules.
+
+
+━━ 2. Where do we stand? (status) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+status reads local refs only, so it works offline.
+
+$ lazysubmodules status
+NAME        PATH               MODE         REF      LOCK                   HEAD     STATE
+kernel      kernel             tag-pattern  v6.6.*   8106f61 (v6.6.9)       8106f61  behind
+u-boot      bootloader/u-boot  branch       main     29b295c                29b295c  behind
+fpga.core   ip/fpga-core       tag          v2.3.1   556baa1                556baa1  ok
+crypto lib  libs/crypto lib    commit       5da6927  5da6927                5da6927  ok
+legacy      vendor/legacy      -            -        -                      2f54e11  unmanaged
+tools       tools/nested       branch       develop  3e8e307                3e8e307  ok
+theme       docs/theme         tag          v1.0.0   05f49f3                -        uninitialized
+fresh       third_party/fresh  tag-pattern  v1.*     f2de3e1 (v1.1.0)       -        uninitialized
+app         apps/app           tag          v1.2.0   cfa9d86                cfa9d86  dirty
+sdk         sdk                tag-pattern  v*       6308203 (v3.0.0-rc.2)  6308203  ok
+mirror-lib  libs/mirror        branch       stable   71eb52c                71eb52c  ok
+broken      libs/broken        tag          v9.9.9   52c4bdb (v1.0.0)       52c4bdb  missing-ref
+signed      libs/signed        tag          v1.0.0   5d1133e                5d1133e  ok
+quirky      libs/quirky        tag          v1.0.0   64eca61                64eca61  ok
+[exit status 0: success]
+
+- behind: kernel has a newer v6.6.x tag, v6.6.10, and origin/main of
+  u-boot has moved on.
+- uninitialized: theme was deinitialized, fresh was never cloned.
+- dirty: app has an uncommitted change.
+- missing-ref: broken tracks tag v9.9.9, which does not exist.
+- unmanaged: legacy has no lsm-mode key.
+- ok: sdk stays at its release candidate although v2.9.0 is the
+  newest stable tag: an update never goes back from the locked tag.
+  tools is ok although its nested submodule is at another commit,
+  and quirky although .gitmodules says update = none and ignore = all.
+
+
+━━ 3. Output for scripts (status --porcelain=v1) ━━━━━━━━━━━━━━━━━━━
+
+The porcelain format is a stable interface: a header line, then
+eight TAB-separated fields per submodule, with full commit IDs and
+empty fields where there is no value.
+
+$ lazysubmodules status --porcelain=v1 kernel legacy theme
+# lsm-porcelain v1
+kernel	kernel	tag-pattern	v6.6.*	v6.6.9	8106f614767a75b6567271b1db80d6ade3acb7fb	8106f614767a75b6567271b1db80d6ade3acb7fb	behind
+legacy	vendor/legacy					2f54e11fe5a9c2cf222f3d113338e7e53ddc3620	unmanaged
+theme	docs/theme	tag	v1.0.0	v1.0.0	05f49f3f8b5a18447c1e10f18f28fc7e221d8110		uninitialized
+[exit status 0: success]
+
+A script can list what needs attention:
+
+$ lazysubmodules status --porcelain=v1 |
+  awk -F '\t' 'NR > 1 && $8 != "ok" { print $1 ": " $8 }'
+kernel: behind
+u-boot: behind
+legacy: unmanaged
+theme: uninitialized
+fresh: uninitialized
+app: dirty
+broken: missing-ref
+
+
+━━ 4. Opting in (set) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+LazySubmodules leaves unmanaged submodules alone, even when named:
+
+$ lazysubmodules update legacy
+lazysubmodules: legacy: refused: submodule is not managed by lazysubmodules
+[exit status 3: refused]
+
+set writes the tracking keys to .gitmodules, and for branch mode the
+native branch key too. It changes nothing else.
+
+$ lazysubmodules set legacy --branch main
+legacy: tracks branch main
+[exit status 0: success]
+
+$ git config -f .gitmodules --get-regexp '^submodule\.legacy\.'
+submodule.legacy.path vendor/legacy
+submodule.legacy.url https://git.example.invalid/legacy.git
+submodule.legacy.branch main
+submodule.legacy.lsm-mode branch
+submodule.legacy.lsm-ref main
+
+$ lazysubmodules status legacy
+NAME    PATH           MODE    REF   LOCK  HEAD     STATE
+legacy  vendor/legacy  branch  main  -     2f54e11  behind
+[exit status 0: success]
+
+legacy is behind because it has no lock entry yet. update records
+it, and --commit commits the result:
+
+$ lazysubmodules update --commit legacy
+legacy: 2f54e11 (unlocked) -> main (2f54e11)
+committed 1f0db55049ba678bc96d0de6b3b06927341785df
+[exit status 0: success]
+
+$ git log -1 --format=%B
+manifest: update legacy to main
+
+Tracking mode: branch main
+Old: 2f54e11fe5a9 (unlocked)
+New: 2f54e11fe5a9 (main)
+
+Signed-off-by: Dana Developer <dana@example.org>
+
+
+━━ 5. What would change? (update --dry-run) ━━━━━━━━━━━━━━━━━━━━━━━━
+
+A dry run resolves the targets in the local refs and changes nothing.
+
+$ lazysubmodules update --dry-run kernel u-boot theme sdk
+would update kernel: v6.6.9 (8106f61) -> v6.6.10 (08dcd0d)
+would update u-boot: main (29b295c) -> main (8e9fc7a)
+would update theme: v1.0.0 (05f49f3), initialize
+sdk: up to date
+[exit status 0: success]
+
+kernel would move to v6.6.10: version sorting puts it above v6.6.9,
+and v6.6.11-rc1 is a pre-release. theme would be initialized from the
+repository that deinit left behind, without network access. sdk keeps
+its release candidate. Pre-releases count only on request:
+
+$ lazysubmodules update --dry-run --include-prerelease kernel sdk
+would update kernel: v6.6.9 (8106f61) -> v6.6.11-rc1 (50d5d57)
+sdk: up to date
+[exit status 0: success]
+
+
+━━ 6. All or nothing (refused update) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+An update of every submodule is refused. The refusal names every
+problem, and nothing changes until all selected submodules are safe:
+
+$ lazysubmodules update
+lazysubmodules: fresh: refused: submodule is not initialized (use --fetch)
+lazysubmodules: app: refused: submodule has uncommitted changes
+lazysubmodules: broken: refused: ref not found in local refs: tag v9.9.9 does not exist or does not point to a commit
+[exit status 3: refused]
+
+$ git status --short
+ m apps/app
+ m tools/nested
+
+The index is untouched; the two "m" lines are the change in app and
+the nested submodule of tools. Now fix the problems. The change in
+app is not worth keeping:
+
+$ git -C apps/app status --short
+ M NEWS
+
+$ git -C apps/app restore NEWS
+
+broken asks for tag v9.9.9, which its repository does not have:
+
+$ git -C libs/broken tag --list
+v1.0.0
+
+$ lazysubmodules set broken --tag v1.0.0
+broken: tracks tag v1.0.0
+[exit status 0: success]
+
+$ lazysubmodules update --commit broken
+broken: v1.0.0 (52c4bdb), recorded again
+committed e232291a68bdc567d1fb218ebcf063a15800a291
+[exit status 0: success]
+
+fresh needs a clone, which is network access, and update uses the
+network only with --fetch (chapter 9). The dry run of everything now
+reports only fresh:
+
+$ lazysubmodules update --dry-run
+lazysubmodules: fresh: refused: submodule is not initialized (use --fetch)
+[exit status 3: refused]
+
+
+━━ 7. Update and commit a selection (update --commit) ━━━━━━━━━━━━━━
+
+--commit creates one commit with a generated message. It refuses when
+the index holds anything that does not belong to the update:
+
+$ echo "Revision B" >>src/drivers/README
+
+$ git add src/drivers/README
+
+$ lazysubmodules update --commit kernel u-boot theme
+lazysubmodules: refused: the commit would include unrelated changes: src/drivers/README
+[exit status 3: refused]
+
+$ git restore --staged src/drivers/README
+
+$ lazysubmodules update --commit kernel u-boot theme
+Submodule 'theme' (https://git.example.invalid/theme.git) registered for path 'docs/theme'
+Submodule path 'docs/theme': checked out '05f49f3f8b5a18447c1e10f18f28fc7e221d8110'
+kernel: v6.6.9 (8106f61) -> v6.6.10 (08dcd0d)
+u-boot: main (29b295c) -> main (8e9fc7a)
+theme: v1.0.0 (05f49f3), initialized
+committed 7ce01ca1d9283f8099b3f4b636b86b3544ae6fea
+[exit status 0: success]
+
+$ git log -1
+commit 7ce01ca1d9283f8099b3f4b636b86b3544ae6fea
+Author: Dana Developer <dana@example.org>
+Date:   Sun Jan 4 17:00:00 2026 +0000
+
+    manifest: update 2 submodules
+
+    Submodule "kernel":
+      Tracking mode: tag-pattern v6.6.*
+      Old: 8106f614767a (v6.6.9)
+      New: 08dcd0dc8f98 (v6.6.10)
+
+    Submodule "u-boot":
+      Tracking mode: branch main
+      Old: 29b295ca56c4 (main)
+      New: 8e9fc7a2511a (main)
+
+    Signed-off-by: Dana Developer <dana@example.org>
+
+theme was only initialized; its recorded commit is the same, so the
+message leaves it out. "git commit -s" added the Signed-off-by line.
+
+$ lazysubmodules status kernel u-boot theme
+NAME    PATH               MODE         REF     LOCK               HEAD     STATE
+kernel  kernel             tag-pattern  v6.6.*  08dcd0d (v6.6.10)  08dcd0d  ok
+u-boot  bootloader/u-boot  branch       main    8e9fc7a            8e9fc7a  ok
+theme   docs/theme         tag          v1.0.0  05f49f3            05f49f3  ok
+[exit status 0: success]
+
+
+━━ 8. A tag moved upstream (fetch, drift, verify) ━━━━━━━━━━━━━━━━━━
+
+The maintainer of fpga-core moves the release tag v2.3.1 to a later
+commit and force-pushes it:
+
+(upstream fpga-core) $ git tag --force -a -m 'release v2.3.1' v2.3.1 main
+Updated tag 'v2.3.1' (was 8c057cc)
+
+(upstream fpga-core) $ git push --force origin v2.3.1
+To file://$DEMO/mirror/fpga-core.git
+ + 8c057cc...326f94b v2.3.1 -> v2.3.1 (forced update)
+
+The sdk project releases v3.0.0 as well. Local refs do not change
+until a fetch, so status still sees nothing new:
+
+$ lazysubmodules status fpga.core sdk
+NAME       PATH          MODE         REF     LOCK                   HEAD     STATE
+fpga.core  ip/fpga-core  tag          v2.3.1  556baa1                556baa1  ok
+sdk        sdk           tag-pattern  v*      6308203 (v3.0.0-rc.2)  6308203  ok
+[exit status 0: success]
+
+$ lazysubmodules fetch fpga.core sdk
+From file://$DEMO/mirror/fpga-core
+ t [tag update]      v2.3.1     -> v2.3.1
+From file://$DEMO/mirror/sdk
+   6308203..599ca2a  main       -> origin/main
+ * [new tag]         v3.0.0     -> v3.0.0
+fpga.core: fetched
+sdk: fetched
+[exit status 0: success]
+
+$ lazysubmodules status fpga.core sdk
+NAME       PATH          MODE         REF     LOCK                   HEAD     STATE
+fpga.core  ip/fpga-core  tag          v2.3.1  556baa1                556baa1  drift
+sdk        sdk           tag-pattern  v*      6308203 (v3.0.0-rc.2)  6308203  behind
+[exit status 0: success]
+
+fetch replaces moved tags. The locked commit of fpga.core no longer
+matches its tag, which verify reports with exit status 4:
+
+$ lazysubmodules verify fpga.core sdk
+fpga.core: failed (1 of 7 checks)
+  tag: tag v2.3.1 points to 7c6069a8a36b, locked 556baa13f789 (moved tag)
+sdk: ok (7 checks)
+lazysubmodules: verification failed: fpga.core
+[exit status 4: verification failed]
+
+After reviewing the new commit, accept it with an update. sdk moves on
+to the stable v3.0.0, which is newer than its release candidate:
+
+$ lazysubmodules update --commit fpga.core sdk
+fpga.core: v2.3.1 (556baa1) -> v2.3.1 (7c6069a)
+sdk: v3.0.0-rc.2 (6308203) -> v3.0.0 (599ca2a)
+committed 878b0f15f9949a97c856cfbbc1655f9f15cffd18
+[exit status 0: success]
+
+$ git log -1 --format=%B
+manifest: update 2 submodules
+
+Submodule "fpga.core":
+  Tracking mode: tag v2.3.1
+  Old: 556baa13f789 (v2.3.1)
+  New: 7c6069a8a36b (v2.3.1)
+
+Submodule "sdk":
+  Tracking mode: tag-pattern v*
+  Old: 63082039d4fa (v3.0.0-rc.2)
+  New: 599ca2ab4576 (v3.0.0)
+
+Signed-off-by: Dana Developer <dana@example.org>
+
+$ lazysubmodules verify fpga.core sdk
+fpga.core: ok (7 checks)
+sdk: ok (7 checks)
+[exit status 0: success]
+
+
+━━ 9. Clone through the mirror (update --fetch) ━━━━━━━━━━━━━━━━━━━━
+
+fresh was never cloned, and update does not clone without --fetch:
+
+$ lazysubmodules update fresh
+lazysubmodules: fresh: refused: submodule is not initialized (use --fetch)
+[exit status 3: refused]
+
+$ lazysubmodules update --fetch fresh
+Submodule 'fresh' (https://git.example.invalid/fresh.git) registered for path 'third_party/fresh'
+Cloning into '$DEMO/firmware/third_party/fresh'...
+Submodule path 'third_party/fresh': checked out 'f2de3e1ec47a9de1bd0316651efbfce990587c49'
+fresh: v1.1.0 (f2de3e1), cloned
+[exit status 0: success]
+
+The clone keeps the URL from .gitmodules. Git rewrites it to the
+mirror whenever it connects:
+
+$ git -C third_party/fresh config remote.origin.url
+https://git.example.invalid/fresh.git
+
+$ git -C third_party/fresh remote get-url origin
+file://$DEMO/mirror/fresh.git
+
+Lock file, gitlinks, checkouts and tags now agree for every submodule:
+
+$ lazysubmodules verify
+kernel: ok (7 checks)
+u-boot: ok (6 checks)
+fpga.core: ok (7 checks)
+crypto lib: ok (6 checks)
+legacy: ok (6 checks)
+tools: ok (6 checks)
+theme: ok (7 checks)
+fresh: ok (7 checks)
+app: ok (7 checks)
+sdk: ok (7 checks)
+mirror-lib: ok (6 checks)
+broken: ok (7 checks)
+signed: ok (7 checks)
+quirky: ok (7 checks)
+[exit status 0: success]
+
+
+━━ 10. Signatures (verify --signatures) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+--signatures also checks the signature of the locked tag, or of the
+locked commit in branch and commit mode, using Git's settings.
+The demo trusts the SSH key that signed tag v1.0.0 of signed. The tag
+of app is annotated but not signed:
+
+$ lazysubmodules verify --signatures signed app
+app: failed (1 of 8 checks)
+  signature: tag v1.2.0: error: no signature found
+signed: ok (8 checks)
+lazysubmodules: verification failed: app
+[exit status 4: verification failed]
+
+
+━━ 11. Run a command everywhere (foreach) ━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+foreach runs a command in every checked-out managed submodule. It
+starts no shell of its own, so this example asks for one. The command
+finds name, sm_path, sha1, LSM_MODE and LSM_REF in its environment:
+
+$ lazysubmodules foreach -- sh -c 'echo "$name ($LSM_MODE): $(git log -1 --format=%s)"'
+kernel (tag-pattern): Linux v6.6.10
+u-boot (branch): board: add a new board
+fpga.core (tag): timing: fix setup violation
+crypto lib (commit): crypto: add sources
+legacy (branch): legacy 1.0
+tools (branch): tools: add inner
+theme (tag): theme v1.0.0
+fresh (tag-pattern): fresh v1.1.0
+app (tag): app v1.2.0
+sdk (tag-pattern): sdk v3.0.0
+mirror-lib (branch): mirror-lib 1.0
+broken (tag): broken v1.0.0
+signed (tag): signed v1.0.0
+quirky (tag): quirky v1.0.0
+[exit status 0: success]
+
+foreach stops at the first command that fails and exits with status 1.
+Is every submodule checked out exactly at a tag?
+
+$ lazysubmodules foreach -- git describe --tags --exact-match
+v6.6.10
+fatal: No names found, cannot describe anything.
+lazysubmodules: u-boot: git: exit status 128
+[exit status 1: error]
+
+
+━━ 12. Where we ended up ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$ lazysubmodules status
+NAME        PATH               MODE         REF      LOCK               HEAD     STATE
+kernel      kernel             tag-pattern  v6.6.*   08dcd0d (v6.6.10)  08dcd0d  ok
+u-boot      bootloader/u-boot  branch       main     8e9fc7a            8e9fc7a  ok
+fpga.core   ip/fpga-core       tag          v2.3.1   7c6069a            7c6069a  ok
+crypto lib  libs/crypto lib    commit       5da6927  5da6927            5da6927  ok
+legacy      vendor/legacy      branch       main     2f54e11            2f54e11  ok
+tools       tools/nested       branch       develop  3e8e307            3e8e307  ok
+theme       docs/theme         tag          v1.0.0   05f49f3            05f49f3  ok
+fresh       third_party/fresh  tag-pattern  v1.*     f2de3e1 (v1.1.0)   f2de3e1  ok
+app         apps/app           tag          v1.2.0   cfa9d86            cfa9d86  ok
+sdk         sdk                tag-pattern  v*       599ca2a (v3.0.0)   599ca2a  ok
+mirror-lib  libs/mirror        branch       stable   71eb52c            71eb52c  ok
+broken      libs/broken        tag          v1.0.0   52c4bdb            52c4bdb  ok
+signed      libs/signed        tag          v1.0.0   5d1133e            5d1133e  ok
+quirky      libs/quirky        tag          v1.0.0   64eca61            64eca61  ok
+[exit status 0: success]
+
+$ git log --oneline
+878b0f1 manifest: update 2 submodules
+7ce01ca manifest: update 2 submodules
+e232291 manifest: update broken to v1.0.0
+1f0db55 manifest: update legacy to main
+8710bae manifest: update kernel to v6.6.9
+d81e465 track submodules with lazysubmodules
+cd2be13 add theme, fresh, app, sdk, mirror-lib, broken, signed and quirky
+7f8c7a1 add kernel, u-boot, fpga.core, crypto lib, legacy and tools
+6526414 initial commit
+
+Exit statuses: 0 success, 1 error (such as a failed foreach command),
+2 usage error, 3 refused, 4 verification failed, 5 a git command
+failed.
+
+Run "scripts/demo.sh --keep DIR" to keep the demo, or add
+--setup-only to explore the superproject in its first state.
+

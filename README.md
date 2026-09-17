@@ -32,6 +32,7 @@ and an interactive terminal user interface (TUI). The binary is called
 
 ## Contents
 
+- [Quick demo](#quick-demo)
 - [Why LazySubmodules](#why-lazysubmodules)
 - [Quick start](#quick-start)
 - [Tracking modes](#tracking-modes)
@@ -45,6 +46,56 @@ and an interactive terminal user interface (TUI). The binary is called
 - [Contributing](#contributing)
 - [License](#license)
 - [Author](#author)
+
+## Quick demo
+
+[`scripts/demo.sh`](scripts/demo.sh) builds a firmware superproject with
+fourteen submodules, covering every tracking mode and every state, and
+walks through LazySubmodules on it in twelve short chapters. It runs
+offline and touches nothing outside its own directory: Git runs without
+your configuration, may use only the file transport, and every submodule
+URL is rewritten to a local mirror.
+
+The demo needs Bash, Git 2.39 or later and a `lazysubmodules` binary:
+
+```sh
+git clone https://github.com/FPGArtktic/lazysubmodules.git
+cd lazysubmodules
+scripts/build-in-container.sh build   # binary in bin/lazysubmodules
+scripts/demo.sh                       # press Enter between the chapters
+```
+
+A host Go toolchain can build the binary instead of the container, and
+`scripts/demo.sh --binary PATH` runs another binary:
+
+```sh
+go build -o bin/lazysubmodules ./cmd/lazysubmodules
+```
+
+The demo shows every state in `status`, the porcelain format and a script
+that reads it, `set` on an unmanaged submodule, dry runs with and without
+pre-release tags, a refused update and how to fix it, `update --commit`
+with the generated commit message, a tag moved upstream that `verify`
+catches, a clone through the mirror, a signature check and `foreach`. Each
+`lazysubmodules` command is followed by its exit status, and the demo
+fails when a command exits with another status than the story expects.
+
+To try the terminal interface on the demo superproject, keep it and stop
+before the story changes anything. `env.sh` sets `HOME` and the Git
+environment of the demo, so source it in a separate shell:
+
+```sh
+scripts/demo.sh --keep /tmp/lsm-demo --setup-only
+. /tmp/lsm-demo/env.sh
+cd /tmp/lsm-demo/firmware
+lazysubmodules tui
+```
+
+[`examples/`](examples/) contains the complete
+[transcript](examples/transcript.txt) of the demo and the
+[`.gitmodules`](examples/.gitmodules) and [`.lsm.lock`](examples/.lsm.lock)
+it ends with; its [README](examples/README.md) describes the options and
+every submodule of the demo.
 
 ## Why LazySubmodules
 
@@ -162,6 +213,9 @@ Git keys:
   modified, until you opt in with `lazysubmodules set`.
 - An unknown `lsm-mode` value is reported as an error. An invalid
   `lsm-ref` makes the submodule show up as `missing-ref`.
+
+[`examples/.gitmodules`](examples/.gitmodules) is a commented example with
+every tracking mode.
 
 ### `.lsm.lock`
 

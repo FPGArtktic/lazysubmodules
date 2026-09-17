@@ -22,6 +22,7 @@ license, `GPL-3.0-only` (see [LICENSE](LICENSE)), and you certify the
 - [File headers](#file-headers)
 - [Commit messages](#commit-messages)
 - [Testing rules](#testing-rules)
+- [Demo and recordings](#demo-and-recordings)
 - [Dependencies](#dependencies)
 - [Third-party notices](#third-party-notices)
 - [Stable interfaces](#stable-interfaces)
@@ -39,6 +40,9 @@ license, `GPL-3.0-only` (see [LICENSE](LICENSE)), and you certify the
 - Optional, for the commit-msg hook: `gitlint` 0.19.1 (see
   [Checking commit messages locally](#checking-commit-messages-locally)).
 - For `scripts/update-builder-pins.sh`: `curl` and network access.
+- For `scripts/demo.sh`: Bash, Git 2.39 or later and, for the signed tag
+  of the demo, `ssh-keygen` (see
+  [Demo and recordings](#demo-and-recordings)).
 
 All other tools (Go, GoReleaser, golangci-lint, cosign, syft, gitlint,
 shellcheck, go-licenses) come at pinned versions from the build image
@@ -470,10 +474,10 @@ Signed-off-by: Name <email>
 | `porcelain` | `internal/porcelain` |
 | `tui` | `internal/tui` |
 | `build` | Go module, `vendor/`, `Containerfile` and its pins, linter configuration |
-| `scripts` | `scripts/` |
+| `scripts` | `scripts/`, including the demo |
 | `ci` | `.github/workflows/ci.yml` |
 | `release` | `.goreleaser.yaml`, `.github/workflows/release.yml` |
-| `docs` | `README.md`, `CONTRIBUTING.md`, `LICENSE`, `DCO` |
+| `docs` | `README.md`, `CONTRIBUTING.md`, `LICENSE`, `DCO`, `examples/` |
 
 No other prefixes are accepted. The release changelog is grouped by these
 prefixes.
@@ -539,6 +543,10 @@ GITLINT_RANGE=origin/main..HEAD scripts/build-in-container.sh gitlint
   (force-push), pre-release tag, nested submodule, dirty submodule.
 - **Golden files:** golden files live under `testdata/`. TUI golden output
   is rendered deterministically, without color.
+- **Demo:** `TestDemo` in `cmd/lazysubmodules` builds the binary and runs
+  `scripts/demo.sh` against it (see
+  [Demo and recordings](#demo-and-recordings)). It needs Bash and is
+  skipped with `go test -short`.
 - **Race detector:** `go test -race` must pass.
 
 Every edge case below has a test:
@@ -555,6 +563,50 @@ Every edge case below has a test:
 | SHA-256 repositories | SHA length not hardcoded |
 | Mirrors (`insteadOf`) | Transparent, no special handling |
 | Non-TTY for `tui` | Exit code 2 |
+
+## Demo and recordings
+
+### The demo
+
+`scripts/demo.sh` builds a firmware superproject with fourteen submodules
+from local repositories and tells a story with LazySubmodules commands in
+twelve chapters. It is documentation and an end-to-end test at once:
+every command must exit with the status the story expects, or the demo
+fails. The topology is the same as that of `gittest.NewComplexSuper`,
+which the core, command line and TUI tests use; keep the two in sync.
+[`examples/README.md`](examples/README.md) describes the options, the
+submodules and the chapters.
+
+```sh
+scripts/build-in-container.sh build   # or a host build into bin/
+scripts/demo.sh --no-pause            # uses bin/lazysubmodules
+scripts/demo.sh --keep /tmp/lsm-demo --setup-only   # first state, kept
+```
+
+- **Isolation:** the demo runs Git without the user and system
+  configuration, allows only the file transport, rewrites every
+  submodule URL to local bare repositories with `url.<base>.insteadOf`,
+  and keeps `HOME` and `TMPDIR` inside the demo directory. Identities and
+  dates are fixed, so commit IDs and output are the same in every run.
+- **`TestDemo`** (`cmd/lazysubmodules/demo_test.go`) runs the demo with
+  `--keep` and `--transcript` against a freshly built binary and checks
+  the exit status of every command, the key lines of the story, the final
+  state and history, and that the files in `examples/` match. It needs
+  Bash and is skipped with `go test -short`. Without `ssh-keygen`, it
+  expects the demo's tag to be unsigned and its signature check to fail.
+
+When the story or its output changes, regenerate the transcript with a
+current binary, and commit it together with the change:
+
+```sh
+scripts/demo.sh --no-pause --transcript examples/transcript.txt
+```
+
+`TestDemo` compares the chapter titles, the commands and the exit
+statuses with the committed transcript, so a stale transcript fails the
+test. When the final `.gitmodules` or `.lsm.lock` change, copy them from
+`DIR/firmware` of a demo kept with `--keep DIR`, replace
+`git.example.invalid` with `git.example.org`, and keep their comments.
 
 ## Dependencies
 
