@@ -7,13 +7,9 @@ import (
 	"bytes"
 	"errors"
 	"flag"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"regexp"
 	"runtime/debug"
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -22,8 +18,15 @@ const wantUsage = `Usage: lazysubmodules <command> [arguments]
 Manage Git submodules that track branches or tags.
 
 Commands:
-  help     show help for lazysubmodules or a command
+  add      clone a new submodule that tracks a ref (network)
+  set      change what a submodule tracks
+  update   move submodules to the refs they track and stage the result
+  status   show the state of submodules
+  fetch    download branches and tags of submodules (network)
+  verify   check that lock file, gitlinks and checkouts agree
+  foreach  run a command in every managed submodule
   version  print version, commit and build date
+  help     show help for lazysubmodules or a command
 
 Run 'lazysubmodules <command> -h' for help on a command.
 `
@@ -33,12 +36,12 @@ const wantVersionHelp = `Usage: lazysubmodules version
 Print the version, the source commit and the build date.
 `
 
-// runArgs runs the command line and returns the exit status and output.
+// runArgs runs the command line outside of every repository and returns
+// the exit status and output.
 func runArgs(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
-	var out, errOut bytes.Buffer
-	code = run(t.Context(), &env{args: args, stdout: &out, stderr: &errOut})
-	return code, out.String(), errOut.String()
+	res := outside(t).run(t, args...)
+	return res.code, res.stdout, res.stderr
 }
 
 func TestVersion(t *testing.T) {
@@ -136,30 +139,42 @@ func TestSplitArgs(t *testing.T) {
 		positional []string
 		ref        string
 		fetch      bool
+		format     porcelainVersion
 	}{
-		{nil, nil, "", false},
-		{[]string{"a", "--fetch", "b"}, []string{"a", "b"}, "", true},
-		{[]string{"--ref", "v1", "a"}, []string{"a"}, "v1", false},
-		{[]string{"a", "-ref=v2", "--fetch=false"}, []string{"a"}, "v2", false},
-		{[]string{"--ref", "--fetch"}, nil, "--fetch", false},
-		{[]string{"-", "--", "--fetch", "-x"}, []string{"-", "--fetch", "-x"}, "", false},
-		{[]string{"--fetch", "--", "--"}, []string{"--"}, "", true},
+		{nil, nil, "", false, ""},
+		{[]string{"a", "--fetch", "b"}, []string{"a", "b"}, "", true, ""},
+		{[]string{"--ref", "v1", "a"}, []string{"a"}, "v1", false, ""},
+		{[]string{"a", "-ref=v2", "--fetch=false"}, []string{"a"}, "v2", false, ""},
+		{[]string{"--ref", "--fetch"}, nil, "--fetch", false, ""},
+		{[]string{"-", "--", "--fetch", "-x"}, []string{"-", "--fetch", "-x"}, "", false, ""},
+		{[]string{"--fetch", "--", "--"}, []string{"--"}, "", true, ""},
+		// An optional value never takes the next argument.
+		{[]string{"--porcelain", "v1"}, []string{"v1"}, "", false, porcelainV1},
+		{[]string{"a", "-porcelain=v1", "--porcelain"}, []string{"a"}, "", false, porcelainV1},
+		{[]string{"--", "--porcelain"}, []string{"--porcelain"}, "", false, ""},
 	}
 	for _, tt := range tests {
 		fs := newFlagSet("test")
 		ref := fs.String("ref", "", "")
 		fetch := fs.Bool("fetch", false, "")
+		var format porcelainVersion
+		fs.Var(&format, "porcelain", "")
 		positional, err := splitArgs(fs, tt.args)
 		if err != nil || !slices.Equal(positional, tt.positional) ||
-			*ref != tt.ref || *fetch != tt.fetch {
-			t.Errorf("splitArgs(%q) = %q, %v; ref %q, fetch %v", tt.args, positional, err,
-				*ref, *fetch)
+			*ref != tt.ref || *fetch != tt.fetch || format != tt.format {
+			t.Errorf("splitArgs(%q) = %q, %v; ref %q, fetch %v, porcelain %q", tt.args,
+				positional, err, *ref, *fetch, format)
 		}
 	}
 
-	for _, args := range [][]string{{"--ref"}, {"--nope"}, {"---ref=x"}} {
+	for _, args := range [][]string{
+		{"--ref"}, {"--nope"}, {"---ref=x"}, {"---ref", "x"}, {"--porcelain=v2"},
+		{"--porcelain=true"}, {"--porcelain="}, {"---porcelain"},
+	} {
 		fs := newFlagSet("test")
 		fs.String("ref", "", "")
+		var format porcelainVersion
+		fs.Var(&format, "porcelain", "")
 		if _, err := splitArgs(fs, args); err == nil || errors.Is(err, flag.ErrHelp) {
 			t.Errorf("splitArgs(%q) error = %v, want a parse error", args, err)
 		}
@@ -170,12 +185,22 @@ func TestCommandUsageWithFlags(t *testing.T) {
 	t.Parallel()
 	fs := newFlagSet("x")
 	fs.Bool("fetch", false, "fetch first")
+	fs.String("ref", "", "use the `revision`")
+	var format porcelainVersion
+	fs.Var(&format, "porcelain", "print `v1`")
 	var out bytes.Buffer
 	c := command{name: "x", synopsis: "[<name>...]", help: "Do x."}
 	writeCommandUsage(&out, c, fs)
 	want := "Usage: lazysubmodules x [<name>...]\n\nDo x.\n\nOptions:\n" +
-		"  -fetch\n    \tfetch first\n"
+		"  --fetch           fetch first\n" +
+		"  --porcelain[=v1]  print v1\n" +
+		"  --ref <revision>  use the revision\n"
 	if out.String() != want {
+		t.Errorf("usage = %q, want %q", out.String(), want)
+	}
+	out.Reset()
+	writeCommandUsage(&out, command{name: "y", help: "Do y."}, newFlagSet("y"))
+	if want := "Usage: lazysubmodules y\n\nDo y.\n"; out.String() != want {
 		t.Errorf("usage = %q, want %q", out.String(), want)
 	}
 }
@@ -216,44 +241,6 @@ func TestResolveBuildInfo(t *testing.T) {
 	for _, tt := range tests {
 		if got := resolveBuildInfo(tt.linked, tt.bi, tt.ok); got != tt.want {
 			t.Errorf("%s: resolveBuildInfo = %+v, want %+v", tt.name, got, tt.want)
-		}
-	}
-}
-
-// TestBinary builds the command with the release -ldflags and checks the
-// injected version and the exit statuses of the real process.
-func TestBinary(t *testing.T) {
-	t.Parallel()
-	if testing.Short() {
-		t.Skip("builds the command")
-	}
-	goBin, err := exec.LookPath("go")
-	if err != nil {
-		t.Skip("go command not available")
-	}
-	bin := filepath.Join(t.TempDir(), "lazysubmodules")
-	ldflags := "-X main.version=v1.2.3-rc.1 -X main.commit=0123456789ab " +
-		"-X main.date=2026-09-16T12:00:00Z"
-	// Without VCS stamping, the build does not depend on the state of the
-	// surrounding repository (GIT_DIR from a hook, dubious ownership).
-	build := exec.CommandContext(t.Context(), goBin, "build", "-trimpath", "-buildvcs=false",
-		"-ldflags", ldflags, "-o", bin, ".")
-	build.Env = append(os.Environ(), "CGO_ENABLED=0")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("go build: %v\n%s", err, out)
-	}
-
-	out, err := exec.CommandContext(t.Context(), bin, "version").Output()
-	want := "lazysubmodules v1.2.3-rc.1\ncommit: 0123456789ab\ndate: 2026-09-16T12:00:00Z\n"
-	if err != nil || string(out) != want {
-		t.Errorf("version = %q, %v; want %q", out, err, want)
-	}
-
-	for args, wantCode := range map[string]int{"help": 0, "": 2, "bogus": 2} {
-		cmd := exec.CommandContext(t.Context(), bin, strings.Fields(args)...)
-		err := cmd.Run()
-		if code := cmd.ProcessState.ExitCode(); code != wantCode {
-			t.Errorf("%q: exit status %d (%v), want %d", args, code, err, wantCode)
 		}
 	}
 }

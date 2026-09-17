@@ -1,0 +1,15 @@
+# lsm-porcelain v1
+kernel	kernel	tag-pattern	v6.6.*	v6.6.9	13d04fe631f60c127efade3ad5647d1919480a16	13d04fe631f60c127efade3ad5647d1919480a16	behind
+u-boot	bootloader/u-boot	branch	main	main	d47bce568bcfe9715c2ed56bde49fdc208924241	d47bce568bcfe9715c2ed56bde49fdc208924241	behind
+fpga.core	ip/fpga-core	tag	v2.3.1	v2.3.1	905b0e89187d411be3aa7ff4db9ce55f8e506cde	905b0e89187d411be3aa7ff4db9ce55f8e506cde	ok
+crypto lib	libs/crypto lib	commit	672358e06b16343d5841b5b4a4dd92217ddb0ff2	672358e06b16343d5841b5b4a4dd92217ddb0ff2	672358e06b16343d5841b5b4a4dd92217ddb0ff2	672358e06b16343d5841b5b4a4dd92217ddb0ff2	ok
+legacy	vendor/legacy					2b4e9513397fb4fe3499d762a57f303e71a03b19	unmanaged
+tools	tools/nested	branch	develop	develop	cec84b64a82e6987c800f079281c5bdc16237c83	cec84b64a82e6987c800f079281c5bdc16237c83	ok
+theme	docs/theme	tag	v1.0.0	v1.0.0	d806af5ff91aa2abb69d33edeb453dc0b82af078		uninitialized
+fresh	third_party/fresh	tag-pattern	v1.*	v1.1.0	633745ad5c77a9a2181b4958534cc7d7be13fa94		uninitialized
+app	apps/app	tag	v1.2.0	v1.2.0	b2a4cfc30a235788c43a359b2790582c1cfa7621	b2a4cfc30a235788c43a359b2790582c1cfa7621	dirty
+sdk	sdk	tag-pattern	v*	v3.0.0-rc.2	7c5de357ef9da3db21538c94419dd68369c4d389	7c5de357ef9da3db21538c94419dd68369c4d389	ok
+mirror-lib	libs/mirror	branch	stable	stable	4b6276d18a7c811b766399b458766076be0d0b0b	4b6276d18a7c811b766399b458766076be0d0b0b	ok
+broken	libs/broken	tag	v9.9.9	v1.0.0	7db717e46a8d8b4bd66c869d25efd9a3abc3a330	7db717e46a8d8b4bd66c869d25efd9a3abc3a330	missing-ref
+signed	libs/signed	tag	v1.0.0	v1.0.0	f5de9ef066c4443341161af054f6e0138142af06	f5de9ef066c4443341161af054f6e0138142af06	ok
+quirky	libs/quirky	tag	v1.0.0	v1.0.0	83e3f4033e684120ae263f880d8cfd58bb5c1836	83e3f4033e684120ae263f880d8cfd58bb5c1836	ok

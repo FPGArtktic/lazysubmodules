@@ -1,0 +1,98 @@
+$ lazysubmodules add -h
+Usage: lazysubmodules add <url> <path> (--branch B | --tag T | --tag-pattern P | --commit SHA)
+
+Clone a repository with 'git submodule add' as a new submodule named after
+its path, write its tracking configuration, check out the resolved commit,
+write .lsm.lock and stage the result. Exactly one of --branch, --tag,
+--tag-pattern and --commit is required. If a step after the clone fails,
+the new submodule is removed again.
+
+Options:
+  --branch <branch>        track the tip of the remote branch
+  --commit <commit>        track the commit (a full or abbreviated SHA)
+  --include-prerelease     let a tag pattern select a pre-release tag
+  --tag <tag>              track the tag
+  --tag-pattern <pattern>  track the highest version tag matching pattern
+
+$ lazysubmodules set -h
+Usage: lazysubmodules set <name> (--branch B | --tag T | --tag-pattern P | --commit SHA)
+
+Change the tracking configuration of a submodule in .gitmodules, and nothing
+else; run 'update' afterwards. An unmanaged submodule becomes managed.
+Exactly one of --branch, --tag, --tag-pattern and --commit is required;
+an abbreviated commit is expanded when it is available locally.
+
+Options:
+  --branch <branch>        track the tip of the remote branch
+  --commit <commit>        track the commit (a full or abbreviated SHA)
+  --tag <tag>              track the tag
+  --tag-pattern <pattern>  track the highest version tag matching pattern
+
+$ lazysubmodules update -h
+Usage: lazysubmodules update [<name>...] [--fetch] [--dry-run] [--commit] [--include-prerelease]
+
+Resolve the tracked ref of managed submodules in the local refs, check out
+the commit, update .lsm.lock and stage the gitlink, .gitmodules and
+.lsm.lock. Without names, every managed submodule is updated.
+Uninitialized submodules are initialized, offline when their repository
+still exists. Nothing is modified when a selected submodule has
+uncommitted changes, a missing ref or needs a clone without --fetch.
+
+Options:
+  --commit              create one commit with the result
+  --dry-run             print the planned changes and modify nothing
+  --fetch               fetch first; clone uninitialized submodules if needed
+  --include-prerelease  let tag patterns select pre-release tags
+
+$ lazysubmodules status -h
+Usage: lazysubmodules status [<name>...] [--porcelain=v1]
+
+Show the tracking configuration, the lock entry, the checked-out commit and
+the state of submodules: ok, behind, drift, dirty, uninitialized,
+missing-ref or unmanaged. Without names, every submodule is shown,
+including unmanaged ones. Only local refs are consulted; run 'fetch' first
+to see what the remotes offer.
+
+Options:
+  --porcelain[=v1]  print the stable v1 format for scripts instead of a table
+
+$ lazysubmodules fetch -h
+Usage: lazysubmodules fetch [<name>...]
+
+Clone and initialize submodules that are not initialized, then run
+'git fetch --tags --force --prune origin' in each of them. Tags moved on
+the remote replace the local ones, which lets status and verify detect
+them. Without names, every managed submodule is fetched. Git's progress
+output goes to standard error.
+
+$ lazysubmodules verify -h
+Usage: lazysubmodules verify [<name>...] [--signatures]
+
+Compare the lock commit, the gitlink in the HEAD commit of the superproject
+and the submodule HEAD. For tags and tag patterns, also check that the
+locked tag still resolves to the locked commit. Every failed check is
+printed, and the exit status is 4 when any check fails. Without names,
+every managed submodule is verified.
+
+Options:
+  --signatures  also verify the signature of the locked tag or commit
+
+$ lazysubmodules foreach -h
+Usage: lazysubmodules foreach -- <command> [args...]
+
+Run a command, without a shell, in every managed submodule that is checked
+out, in .gitmodules order. Uninitialized submodules are skipped with a note.
+The first command that fails ends foreach with exit status 1. The command
+gets the variables name, sm_path, displaypath, sha1, toplevel, LSM_MODE and
+LSM_REF. The '--' may be left out when the command does not start with '-'.
+
+$ lazysubmodules version -h
+Usage: lazysubmodules version
+
+Print the version, the source commit and the build date.
+
+$ lazysubmodules help -h
+Usage: lazysubmodules help [<command>]
+
+Show the list of commands, or the help of one command.
+

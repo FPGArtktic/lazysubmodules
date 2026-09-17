@@ -1,0 +1,10 @@
+NAME              PATH             MODE         REF      LOCK              HEAD     STATE
+kernel            kernel           tag-pattern  v6.6.*   a1b2c3d (v6.6.9)  a1b2c3d  behind
+ядро              ядро             tag          v1       a1b2c3d           a1b2c3d  ok
+crypto lib        libs/crypto lib  commit       e4f5a6b  e4f5a6b           e4f5a6b  ok
+legacy            vendor/legacy    -            -        -                 ccccccc  unmanaged
+theme             theme            tag          v1       a1b2c3d           -        uninitialized
+app               app              tag          v1       -                 ccccccc  dirty
+fpga              fpga             tag          v2       a1b2c3d           a1b2c3d  drift
+broken            broken           tag          v9       a1b2c3d (v1)      a1b2c3d  missing-ref
+"evil\x1b]0;x\a"  "a\tb"           tag          "v1\n"   "a1b2c3d (v\"1)"  -        missing-ref

@@ -4,3 +4,8 @@
 module github.com/FPGArtktic/lazysubmodules
 
 go 1.27.1
+
+require (
+	github.com/charmbracelet/x/term v0.2.2
+	golang.org/x/sys v0.47.0
+)
