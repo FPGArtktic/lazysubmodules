@@ -63,9 +63,13 @@ func newHostileFixture(t *testing.T) *fixture {
 	outer.AddSubmodule(t, "inner", f.up)
 	s.AddSubmodule(t, "outer", outer)
 	gittest.Git(t, f.dir("outer"), "submodule", "update", "--init", "--quiet")
-	for name, p := range map[string]string{"docs": "docs", "evil": "outer/inner"} {
-		s.SetKey(t, name, manifest.KeyPath, p)
-		s.SetKey(t, name, manifest.KeyURL, f.up.Bare)
+	// A slice, not a map: the entries must appear in .gitmodules in this
+	// order, which the expected error and foreach output depend on.
+	for _, e := range []struct{ name, path string }{
+		{"docs", "docs"}, {"evil", "outer/inner"},
+	} {
+		s.SetKey(t, e.name, manifest.KeyPath, e.path)
+		s.SetKey(t, e.name, manifest.KeyURL, f.up.Bare)
 	}
 	f.configure("docs", manifest.ModeBranch, "main")
 	f.configure("evil", manifest.ModeTag, gittest.TagV100)
