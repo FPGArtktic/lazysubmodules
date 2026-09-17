@@ -354,23 +354,23 @@ func (u *updater) checkState(ctx context.Context, s *step) error {
 // checked by the initialization itself.
 func (u *updater) checkInit(ctx context.Context, s *step) error {
 	name := s.change.Submodule.Name
-	hasRepo, err := isDir(s.loc.gitDir)
+	exists, err := isDir(s.loc.gitDir)
 	if err != nil {
 		return err
 	}
-	s.change.Init, s.change.Clone = true, !hasRepo
+	s.change.Init, s.change.Clone = true, !exists
 	switch {
 	case u.opts.Fetch:
 		return nil
-	case !hasRepo:
+	case !exists:
 		s.refusal = wrapName(name, ErrUninitialized)
 		return nil
-	case !s.loc.hasGitDir && !u.opts.DryRun:
+	case !s.loc.hasRepo() && !u.opts.DryRun:
 		if err := u.recreateWorktree(ctx, s); err != nil {
 			return err
 		}
 	}
-	if !s.loc.hasGitDir {
+	if !s.loc.hasRepo() {
 		return nil
 	}
 	_, err = u.repo.git.ResolveCommit(ctx, s.loc.gitDir, s.loc.gitlink)
@@ -392,7 +392,7 @@ func (u *updater) recreateWorktree(ctx context.Context, s *step) error {
 	if err != nil || !created {
 		return err
 	}
-	s.loc.hasGitDir, err = u.repo.isGitDir(ctx, s.loc.gitDir)
+	s.loc.repo, err = u.repo.git.InspectGitDir(ctx, s.loc.gitDir)
 	return err
 }
 

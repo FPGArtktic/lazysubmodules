@@ -297,16 +297,6 @@ func TestSmallHelpers(t *testing.T) {
 			t.Errorf("listPaths(%q) = %q, want %q", paths, got, want)
 		}
 	}
-	for name, want := range map[string]bool{
-		"GIT_DIR": true, "GIT_WORK_TREE": true, "GIT_INDEX_FILE": true,
-		"GIT_COMMON_DIR": true, "GIT_INTERNAL_SUPER_PREFIX": true, "GIT_CONFIG": true,
-		"GIT_CONFIG_PARAMETERS": false, "GIT_CONFIG_COUNT": false, "HOME": false,
-		"GIT_AUTHOR_NAME": false, "git_dir": false,
-	} {
-		if got := isRepoEnv(name); got != want {
-			t.Errorf("isRepoEnv(%s) = %v, want %v", name, got, want)
-		}
-	}
 	for s, want := range map[string]bool{
 		"manifest: update lib to v1":                  true,
 		"manifest: update lib to v1.":                 false,

@@ -202,3 +202,28 @@ func TestSubmodules(t *testing.T) {
 		t.Errorf("Submodules = %+v, %v; want %+v", subs, err, want)
 	}
 }
+
+func TestExplicitBareRepository(t *testing.T) {
+	t.Parallel()
+	// Before git 2.45, this setting refuses the repositories in the git
+	// directory of the superproject, while "git submodule" still uses them.
+	f := newFixture(t, gittest.SHA1, "safe.bareRepository=explicit")
+	v100 := f.commits[gittest.TagV100]
+	f.track("lib", manifest.ModeTag, gittest.TagV100, gittest.TagV100, v100)
+	f.super.Deinit(t, "lib")
+	if err := os.Remove(filepath.Join(f.super.Dir, "lib")); err != nil {
+		t.Fatal(err)
+	}
+
+	st := f.status("lib")
+	wantState(t, st, core.StateUninitialized, "not checked out")
+	if st.Target != nil && st.Target.Commit != v100 {
+		t.Errorf("target %+v", st.Target)
+	}
+	c := oneChange(t, f.mustUpdate(core.UpdateOptions{}))
+	wantSteps(t, c, true, false)
+	if c.New.Commit != v100 || headOf(t, f.dir("lib")) != v100 {
+		t.Errorf("Update = %+v", c)
+	}
+	wantState(t, f.status("lib"), core.StateOK, "")
+}

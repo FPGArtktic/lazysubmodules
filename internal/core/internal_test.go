@@ -421,7 +421,8 @@ func TestLocateErrors(t *testing.T) {
 
 	// A regular file in place of the module repository is no repository.
 	loc, err = r.locate(t.Context(), sub)
-	if err != nil || loc.gitlink != head || loc.populated || loc.hasGitDir || loc.symlink {
+	if err != nil || loc.gitlink != head || loc.populated || loc.repo != git.RepoInvalid ||
+		loc.symlink {
 		t.Errorf("locate(file) = %+v, %v", loc, err)
 	}
 	if err := loc.refusal("lib"); err != nil {
@@ -454,5 +455,66 @@ func TestLocateErrors(t *testing.T) {
 		if !errors.Is(err, os.ErrPermission) {
 			t.Errorf("locate(%s not accessible) = %v, want a permission error", dir, err)
 		}
+	}
+}
+
+func TestLocateRepository(t *testing.T) {
+	t.Parallel()
+	up := gittest.NewUpstream(t, gittest.SHA1)
+	up.Commit(t, "one")
+	super := gittest.NewSuper(t, gittest.SHA1)
+	super.AddSubmodule(t, "lib", up)
+	super.Deinit(t, "lib")
+	sub := manifest.Submodule{Name: "lib", Path: "lib", URL: up.Bare, Mode: manifest.ModeTag,
+		Ref: "v1"}
+	module := filepath.Join(super.Dir, ".git", "modules", "lib")
+	plain := &Repo{git: gittest.Runner(t), root: super.Dir, hexLen: sha1HexLen}
+	// Before git 2.45, this setting refuses the repositories inside a ".git"
+	// directory, which "git submodule" still initializes.
+	explicit := &Repo{git: gittest.Runner(t, "safe.bareRepository=explicit"), root: super.Dir,
+		hexLen: sha1HexLen}
+	ctx := t.Context()
+	locate := func(r *Repo) location {
+		t.Helper()
+		loc, err := r.locate(ctx, sub)
+		if err != nil || loc.populated || loc.gitDir != module {
+			t.Fatalf("locate = %+v, %v", loc, err)
+		}
+		return loc
+	}
+
+	loc := locate(plain)
+	if dir, ok := loc.refDir(); loc.repo != git.RepoUsable || !ok || dir != module {
+		t.Errorf("deinitialized: repo %v, refDir %q, %t", loc.repo, dir, ok)
+	}
+	loc = locate(explicit)
+	if dir, ok := loc.refDir(); ok != (loc.repo == git.RepoUsable) ||
+		(ok && dir != module) || loc.repo == git.RepoInvalid {
+		t.Errorf("safe.bareRepository: repo %v, refDir %q, %t", loc.repo, dir, ok)
+	}
+
+	if err := os.RemoveAll(module); err != nil {
+		t.Fatal(err)
+	}
+	loc = locate(plain)
+	if _, ok := loc.refDir(); loc.repo != git.RepoMissing || ok {
+		t.Errorf("removed: repo %v, refDir %t", loc.repo, ok)
+	}
+
+	// An empty directory in place of the repository.
+	if err := os.Mkdir(module, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []*Repo{plain, explicit} {
+		loc = locate(r)
+		if _, ok := loc.refDir(); loc.repo != git.RepoInvalid || ok {
+			t.Errorf("empty: repo %v, refDir %t", loc.repo, ok)
+		}
+	}
+
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := plain.locate(canceled, sub); !errors.Is(err, context.Canceled) {
+		t.Errorf("locate(canceled) = %v, want context.Canceled", err)
 	}
 }

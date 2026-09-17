@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/FPGArtktic/lazysubmodules/internal/git"
 	"github.com/FPGArtktic/lazysubmodules/internal/manifest"
 )
 
@@ -74,9 +75,10 @@ func (r *Repo) Foreach(ctx context.Context, opts ForeachOptions) error {
 	if err != nil {
 		return err
 	}
+	// As "git submodule foreach" does it.
 	env := slices.DeleteFunc(os.Environ(), func(kv string) bool {
 		name, _, _ := strings.Cut(kv, "=")
-		return isRepoEnv(name)
+		return git.IsLocalEnvVar(name)
 	})
 	for _, sub := range subs {
 		if err := r.runIn(ctx, sub, env, opts); err != nil {
@@ -140,19 +142,4 @@ func (r *Repo) displayPath(worktree, smPath string) string {
 		return smPath
 	}
 	return filepath.ToSlash(rel)
-}
-
-// isRepoEnv reports whether an environment variable ties git to a
-// particular repository, as listed by "git rev-parse --local-env-vars",
-// apart from the variables that carry command line configuration. "git
-// submodule foreach" removes them as well.
-func isRepoEnv(name string) bool {
-	switch name {
-	case "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_OBJECT_DIRECTORY",
-		"GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE",
-		"GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE",
-		"GIT_PREFIX", "GIT_INTERNAL_SUPER_PREFIX", "GIT_SHALLOW_FILE", "GIT_COMMON_DIR":
-		return true
-	}
-	return false
 }

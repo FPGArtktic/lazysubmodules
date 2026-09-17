@@ -17,9 +17,6 @@ import (
 	"github.com/FPGArtktic/lazysubmodules/internal/manifest"
 )
 
-// exitFatal is the exit status of git for fatal errors.
-const exitFatal = 128
-
 // location describes where the repository of a submodule can be found.
 type location struct {
 	// worktree is the absolute path of the submodule working tree.
@@ -42,10 +39,10 @@ type location struct {
 	// directory of the superproject. It is only looked up for a submodule
 	// that the index records and that is not populated.
 	gitDir string
-	// hasGitDir reports whether gitDir is a repository that git commands
-	// can run in. It is false when the directory is missing or empty, and
-	// also when the repository still names a working tree that was removed.
-	hasGitDir bool
+	// repo tells what gitDir holds. A repository that git refuses to use,
+	// for example because it names a working tree that was removed, is left
+	// to the initialization of the submodule.
+	repo git.RepoState
 }
 
 // tracked reports whether the index of the superproject records a
@@ -67,6 +64,11 @@ func (l location) refusal(name string) error {
 	return nil
 }
 
+// hasRepo reports whether git commands can run in the submodule repository.
+func (l location) hasRepo() bool {
+	return l.repo == git.RepoUsable
+}
+
 // refDir returns the directory in which the refs of the submodule can be
 // read: the working tree when it is populated, else the submodule
 // repository in the git directory of the superproject.
@@ -74,7 +76,7 @@ func (l location) refDir() (string, bool) {
 	switch {
 	case l.populated:
 		return l.worktree, true
-	case l.hasGitDir:
+	case l.hasRepo():
 		return l.gitDir, true
 	}
 	return "", false
@@ -106,28 +108,11 @@ func (r *Repo) locate(ctx context.Context, sub manifest.Submodule) (location, er
 	if err != nil {
 		return loc, err
 	}
-	loc.hasGitDir, err = r.isGitDir(ctx, loc.gitDir)
+	// Before git 2.45, safe.bareRepository=explicit makes the repositories
+	// in the git directory of a superproject unusable, while "git submodule"
+	// still initializes them; the refs are then read in the working tree.
+	loc.repo, err = r.git.InspectGitDir(ctx, loc.gitDir)
 	return loc, err
-}
-
-// isGitDir reports whether dir is itself a git directory that git commands
-// can run in. A directory inside the git directory of the superproject that
-// is not a repository would make git fall back to the superproject, so the
-// git directory that git finds must be dir itself.
-func (r *Repo) isGitDir(ctx context.Context, dir string) (bool, error) {
-	ok, err := isDir(dir)
-	if err != nil || !ok {
-		return false, err
-	}
-	head, err := r.git.GitPath(ctx, dir, "HEAD")
-	if gitErr, ok := errors.AsType[*git.Error](err); ok && gitErr.ExitCode == exitFatal {
-		// For example "cannot chdir" to a working tree that was removed.
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return sameDir(filepath.Dir(head), dir)
 }
 
 // isDir reports whether dir is a directory, following symbolic links. A
@@ -141,20 +126,6 @@ func isDir(dir string) (bool, error) {
 		return false, fmt.Errorf("submodule repository: %w", err)
 	}
 	return fi.IsDir(), nil
-}
-
-// sameDir reports whether two existing directories are the same after
-// resolving symbolic links.
-func sameDir(a, b string) (bool, error) {
-	ra, err := filepath.EvalSymlinks(a)
-	if err != nil {
-		return false, fmt.Errorf("resolve %s: %w", a, err)
-	}
-	rb, err := filepath.EvalSymlinks(b)
-	if err != nil {
-		return false, fmt.Errorf("resolve %s: %w", b, err)
-	}
-	return ra == rb, nil
 }
 
 // hasSymlink reports whether a component of the "/"-separated path p below
