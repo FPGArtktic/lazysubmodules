@@ -30,11 +30,15 @@ var (
 	// ErrUninitialized is returned when a submodule is not checked out and
 	// its repository is not available locally.
 	ErrUninitialized = fmt.Errorf("%w: submodule is not initialized (use --fetch)", ErrRefused)
-	// ErrUnrelatedStaged is returned when the index of the superproject
-	// holds staged changes that a commit of the updated submodules would
-	// include by accident.
-	ErrUnrelatedStaged = fmt.Errorf("%w: index contains unrelated staged changes",
+	// ErrUnrelatedStaged is returned when a commit of the updated submodules
+	// would include changes that concern no selected submodule: other
+	// staged paths, or changes of .gitmodules or the lock file outside the
+	// sections of the selected submodules, staged or not.
+	ErrUnrelatedStaged = fmt.Errorf("%w: the commit would include unrelated changes",
 		ErrRefused)
+	// ErrUnmergedIndex is returned when a commit is requested while the
+	// index of the superproject holds unresolved merge conflicts.
+	ErrUnmergedIndex = fmt.Errorf("%w: the index has unresolved merge conflicts", ErrRefused)
 	// ErrSymlinkPath is returned when the path of a submodule leads through a
 	// symbolic link. Git never checks out a submodule there, and following
 	// the link could modify an unrelated repository.

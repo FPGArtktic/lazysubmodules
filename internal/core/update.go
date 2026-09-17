@@ -157,10 +157,16 @@ type UpdateResult struct {
 // gitlink in the index, has a path through a symbolic link, is not
 // initialized and cannot be initialized offline (no repository, or one
 // that lacks the recorded commit or objects of it), or has an invalid
-// or missing ref, and, with opts.Commit, when the index holds staged
-// changes of other paths than .gitmodules, the lock file and the selected
-// submodules. These checks run for every selected submodule before
-// anything is modified, and all refusals are reported together. Only the
+// or missing ref. With opts.Commit, Update also refuses while the index has
+// merge conflicts, and when the commit would include changes that concern
+// no selected submodule: staged changes of other paths than .gitmodules,
+// the lock file and the selected submodules, or a variable of .gitmodules
+// or the lock file, outside the sections of the selected submodules, whose
+// working tree, index and HEAD values differ (changes of comments or layout
+// alone are not detected). The sections of the selected submodules may
+// hold other changes; they are committed with the update. These checks run
+// for every selected submodule before anything is modified, and all
+// refusals are reported together. Only the
 // removed working tree directory of a submodule whose repository names it
 // is created before, empty, as git leaves it when it deinitializes a
 // submodule, so that the repository can be read offline; this happens
@@ -181,15 +187,15 @@ type UpdateResult struct {
 // managed submodule and no name is given; an error wrapping ErrNotFound or
 // ErrUnmanaged for a name that cannot be updated; an error joining the
 // refusals, each wrapping ErrRefused (ErrDirty, ErrNotSubmodule,
-// ErrUninitialized, ErrSymlinkPath, ErrMissingRef or ErrUnrelatedStaged);
-// an error from reading or writing the working tree copy of .gitmodules or
-// the lock file, such as one wrapping git.ErrNotRegularFile for a copy that
-// is not a regular file, manifest.ErrInvalidMode or lock.ErrInvalidEntry;
-// or *git.Error, also for a copy in the index or HEAD that git cannot read,
-// such as one missing from a partial clone. A failure after the first
-// modification is joined with the errors of putting things back, if any.
-// When the commit fails, the result lists the staged changes along with
-// the error.
+// ErrUninitialized, ErrSymlinkPath, ErrMissingRef, ErrUnmergedIndex or
+// ErrUnrelatedStaged); an error from reading or writing the working tree
+// copy of .gitmodules or the lock file, such as one wrapping
+// git.ErrNotRegularFile for a copy that is not a regular file,
+// manifest.ErrInvalidMode or lock.ErrInvalidEntry; or *git.Error, also for
+// a copy in the index or HEAD that git cannot read, such as one missing
+// from a partial clone. A failure after the first modification is joined
+// with the errors of putting things back, if any. When the commit fails,
+// the result lists the staged changes along with the error.
 func (r *Repo) Update(ctx context.Context, opts UpdateOptions) (UpdateResult, error) {
 	subs, lk, err := r.load(ctx, opts.Names, selectManaged)
 	if err != nil || len(subs) == 0 {
@@ -326,14 +332,11 @@ func (u *updater) plan(ctx context.Context, subs []manifest.Submodule, lk *lock.
 	}
 	refusals := make([]error, 0, len(subs)+1)
 	if u.opts.Commit {
-		unrelated, err := u.unrelatedStaged(ctx)
+		refusal, err := u.commitRefusal(ctx)
 		if err != nil {
 			return err
 		}
-		if len(unrelated) > 0 {
-			refusals = append(refusals,
-				fmt.Errorf("%w: %s", ErrUnrelatedStaged, listPaths(unrelated)))
-		}
+		refusals = append(refusals, refusal)
 	}
 	for _, s := range u.steps {
 		refusals = append(refusals, s.refusal)
@@ -547,19 +550,52 @@ func (s *step) refuse(err error) error {
 	return err
 }
 
-// unrelatedStaged lists the staged paths that a commit of the update must
-// not include.
-func (u *updater) unrelatedStaged(ctx context.Context) ([]string, error) {
+// commitRefusal returns the refusal of a commit of the update, or nil: the
+// index holds merge conflicts, which git refuses to commit, or the commit
+// would include unrelated changes.
+func (u *updater) commitRefusal(ctx context.Context) (refusal, err error) {
 	r := u.repo
+	unmerged, err := r.git.UnmergedPaths(ctx, r.root)
+	if err != nil {
+		return nil, err
+	}
+	if len(unmerged) > 0 {
+		return fmt.Errorf("%w: %s", ErrUnmergedIndex, listPaths(unmerged)), nil
+	}
+	unrelated, err := u.unrelatedChanges(ctx)
+	if err != nil || len(unrelated) == 0 {
+		return nil, err
+	}
+	return fmt.Errorf("%w: %s", ErrUnrelatedStaged, listPaths(unrelated)), nil
+}
+
+// unrelatedChanges lists what a commit of the update would include although
+// it concerns no selected submodule: .gitmodules and the lock file when
+// their copies differ outside the sections of the selected submodules, and
+// the staged paths other than these files and the selected submodules.
+func (u *updater) unrelatedChanges(ctx context.Context) ([]string, error) {
+	r := u.repo
+	names := make(map[string]bool, len(u.steps))
+	allowed := map[string]bool{manifest.File: true, lock.File: true}
+	for _, s := range u.steps {
+		names[s.change.Submodule.Name] = true
+		allowed[s.change.Submodule.Path] = true
+	}
+	var unrelated []string
+	for _, file := range []string{manifest.File, lock.File} {
+		kind, err := r.outsideChanges(ctx, file, names)
+		if err != nil {
+			return nil, err
+		}
+		if kind != "" {
+			unrelated = append(unrelated, file+" ("+kind+
+				" changes outside the selected submodules)")
+		}
+	}
 	staged, err := r.git.StagedPaths(ctx, r.root)
 	if err != nil {
 		return nil, err
 	}
-	allowed := map[string]bool{manifest.File: true, lock.File: true}
-	for _, s := range u.steps {
-		allowed[s.change.Submodule.Path] = true
-	}
-	var unrelated []string
 	for _, p := range staged {
 		if !allowed[p] {
 			unrelated = append(unrelated, p)

@@ -247,6 +247,67 @@ func TestUpdateRestagesTracking(t *testing.T) {
 	})
 }
 
+func TestUpdateUnmergedFiles(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gittest.SHA1)
+	v100, v101 := f.commits[gittest.TagV100], f.commits[gittest.TagV101]
+	rc := f.commits[gittest.TagV200RC]
+	f.track("lib", manifest.ModeTagPattern, "v1.*", gittest.TagV100, v100)
+	d := f.super.Dir
+	// Both branches change the section of lib in .gitmodules and lock lib
+	// at another tag, so a merge conflicts in both files. The user takes
+	// the side of the merged branch in the working tree, without staging it.
+	gittest.Git(t, d, "checkout", "--quiet", "-b", "side")
+	f.super.SetKey(t, "lib", "update", "checkout")
+	f.pin("lib", manifest.ModeTagPattern, gittest.TagV101, v101)
+	gittest.Git(t, d, "checkout", "--quiet", "main")
+	f.checkout("lib", v100)
+	f.super.SetKey(t, "lib", "update", "none")
+	f.pin("lib", manifest.ModeTagPattern, gittest.TagV200RC, rc)
+	if _, err := f.g.Run(t.Context(), d, "merge", "--quiet", "side"); err == nil {
+		t.Fatal("the merge did not conflict")
+	}
+	gittest.Git(t, d, "checkout", "--theirs", "--", manifest.File, lock.File)
+	f.checkout("lib", v101)
+	files := manifest.File + "\n" + lock.File
+	unmerged := func() string {
+		t.Helper()
+		return gittest.Git(t, d, "diff", "--name-only", "--diff-filter=U")
+	}
+	if got := unmerged(); got != files {
+		t.Fatalf("unmerged paths %q, want %q", got, files)
+	}
+	before := treeState(t, d)
+
+	// Git cannot commit before the conflicts are resolved.
+	for _, opts := range []core.UpdateOptions{{Commit: true}, {Commit: true, DryRun: true}} {
+		res, err := f.update(opts)
+		what := fmt.Sprintf("Update(%+v)", opts)
+		want := "refused: the index has unresolved merge conflicts: " + manifest.File + ", " +
+			lock.File
+		wantErr(t, what, err, core.ErrRefused, core.ErrUnmergedIndex)
+		if err == nil || err.Error() != want || len(res.Changes) != 0 {
+			t.Errorf("%s = %+v, %v\nwant %s", what, res, err, want)
+		}
+	}
+	wantSameTree(t, "refused update", before, treeState(t, d))
+
+	// The index records neither file; staging the update resolves the
+	// conflicts.
+	c := oneChange(t, f.mustUpdate(core.UpdateOptions{}))
+	if !c.Changed() || c.Old != nil || c.New.Commit != v101 {
+		t.Errorf("Update = %+v", c)
+	}
+	if got := unmerged(); got != "" {
+		t.Errorf("unmerged paths %q", got)
+	}
+	indexMatchesWorktree(t, d, manifest.File, lock.File)
+	if got := gitlinkAt(t, d, "", "lib"); got != v101 {
+		t.Errorf("index gitlink %s, want %s", got, v101)
+	}
+	wantUpToDate(t, f, core.UpdateOptions{})
+}
+
 func TestUpdateLinkedLockInIndex(t *testing.T) {
 	t.Parallel()
 	for _, commit := range []bool{false, true} {

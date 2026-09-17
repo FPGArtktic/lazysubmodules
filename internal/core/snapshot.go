@@ -6,6 +6,8 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 
 	"github.com/FPGArtktic/lazysubmodules/internal/git"
 	"github.com/FPGArtktic/lazysubmodules/internal/lock"
@@ -87,4 +89,51 @@ func (s snapshot) tracking(name string) tracking {
 // sameEntry reports whether the lock entry e exists and equals want.
 func sameEntry(e *lock.Entry, want lock.Entry) bool {
 	return e != nil && *e == want
+}
+
+// outsideChanges tells whether the variables of a configuration file differ
+// outside the sections of the named submodules: "staged" when the index
+// copy differs from the HEAD copy, "unstaged" when the working tree copy
+// differs from the index copy, both, or "" when all three hold the same
+// variables in the same order. A HEAD without commits, or a copy that is
+// not a regular file, has no variables. Comments and layout are not
+// compared, since git does not report them.
+func (r *Repo) outsideChanges(ctx context.Context, file string, names map[string]bool) (
+	string, error,
+) {
+	worktree, err := r.git.ConfigList(ctx, r.root, file)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", file, err)
+	}
+	var recorded [2][]git.ConfigEntry
+	for i, rev := range []string{"", headRev} {
+		entries, err := r.git.ConfigListRev(ctx, r.root, rev, file)
+		if errors.Is(err, git.ErrRefNotFound) || errors.Is(err, git.ErrNotRegularFile) {
+			entries, err = nil, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("read %s:%s: %w", rev, file, err)
+		}
+		recorded[i] = outside(entries, names)
+	}
+	staged := !slices.Equal(recorded[0], recorded[1])
+	unstaged := !slices.Equal(outside(worktree, names), recorded[0])
+	switch {
+	case staged && unstaged:
+		return "staged and unstaged", nil
+	case staged:
+		return "staged", nil
+	case unstaged:
+		return "unstaged", nil
+	}
+	return "", nil
+}
+
+// outside removes the variables of the sections of the named submodules
+// from entries. Submodule names are never empty, so the variables of other
+// sections stay.
+func outside(entries []git.ConfigEntry, names map[string]bool) []git.ConfigEntry {
+	return slices.DeleteFunc(entries, func(e git.ConfigEntry) bool {
+		return names[configName(e.Key)]
+	})
 }

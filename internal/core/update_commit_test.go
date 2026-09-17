@@ -5,6 +5,7 @@ package core_test
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -206,4 +207,185 @@ func TestUpdateCommitNothingStaged(t *testing.T) {
 		t.Errorf("unexpected commit or checkout")
 	}
 	wantStaged(t, f.super.Dir)
+}
+
+// unrelatedRefusal is the start of the refusal of an update with Commit
+// that would commit unrelated changes.
+const unrelatedRefusal = "refused: the commit would include unrelated changes: "
+
+// outsideChange names a file in the refusal of an update with Commit whose copies
+// differ outside the sections of the selected submodules; kind tells which
+// copies differ: "staged", "unstaged" or both.
+func outsideChange(file, kind string) string {
+	return file + " (" + kind + " changes outside the selected submodules)"
+}
+
+func TestUpdateCommitRefusesOtherSections(t *testing.T) {
+	t.Parallel()
+	unstaged := outsideChange(manifest.File, "unstaged")
+	for _, c := range []struct {
+		name string
+		// setup changes the copies of the files; it runs after both
+		// submodules were committed at v1.0.0.
+		setup func(t *testing.T, f *fixture)
+		// refusal lists what the refusal names.
+		refusal string
+		// all reports whether an update of every submodule is allowed.
+		all bool
+	}{
+		{"tracking keys", func(_ *testing.T, f *fixture) {
+			f.mustSet("other", manifest.ModeBranch, "main")
+		}, unstaged, true},
+		{"staged tracking keys", func(t *testing.T, f *fixture) {
+			f.mustSet("other", manifest.ModeBranch, "main")
+			gittest.Git(t, f.super.Dir, "add", manifest.File)
+		}, outsideChange(manifest.File, "staged"), true},
+		{"staged only", func(t *testing.T, f *fixture) {
+			file := filepath.Join(f.super.Dir, manifest.File)
+			content := readFile(t, file)
+			f.mustSet("other", manifest.ModeBranch, "main")
+			gittest.Git(t, f.super.Dir, "add", manifest.File)
+			gittest.WriteFile(t, file, content)
+		}, outsideChange(manifest.File, "staged and unstaged"), true},
+		{"lock entry", func(_ *testing.T, f *fixture) {
+			f.lock("other", manifest.ModeTag, gittest.TagV100, f.commits[gittest.TagV101])
+		}, outsideChange(lock.File, "unstaged"), true},
+		{"staged lock entry", func(t *testing.T, f *fixture) {
+			f.lock("other", manifest.ModeTag, gittest.TagV100, f.commits[gittest.TagV101])
+			gittest.Git(t, f.super.Dir, "add", lock.File)
+		}, outsideChange(lock.File, "staged"), true},
+		{"other section", func(t *testing.T, f *fixture) {
+			gittest.Git(t, f.super.Dir, "config", "-f", manifest.File, "lsm.note", "x")
+		}, unstaged, false},
+		{"entry without submodule", func(t *testing.T, f *fixture) {
+			f.lock("gone", manifest.ModeTag, gittest.TagV100, f.commits[gittest.TagV100])
+			f.super.SetKey(t, "other", "update", "checkout")
+		}, unstaged + ", " + outsideChange(lock.File, "unstaged"), false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			f := newFixture(t, gittest.SHA1)
+			v100 := f.commits[gittest.TagV100]
+			f.track("lib", manifest.ModeTagPattern, "v1.*", gittest.TagV100, v100)
+			f.track("other", manifest.ModeTag, gittest.TagV100, gittest.TagV100, v100)
+			c.setup(t, f)
+			head := headOf(t, f.super.Dir)
+			before := treeState(t, f.super.Dir)
+			lib := []string{"lib"}
+			for _, opts := range []core.UpdateOptions{
+				{Names: lib, Commit: true},
+				{Names: lib, Commit: true, DryRun: true},
+				{Names: lib, Commit: true, Fetch: true},
+			} {
+				res, err := f.update(opts)
+				what := fmt.Sprintf("Update(%+v)", opts)
+				wantErr(t, what, err, core.ErrUnrelatedStaged, core.ErrRefused)
+				want := unrelatedRefusal + c.refusal
+				if err == nil || err.Error() != want || len(res.Changes) != 0 {
+					t.Errorf("%s = %+v, %v\nwant %s", what, res, err, want)
+				}
+			}
+			wantSameTree(t, "refused update", before, treeState(t, f.super.Dir))
+			// Without Commit, the files are staged as a whole.
+			if _, err := f.update(core.UpdateOptions{Names: lib, DryRun: true}); err != nil {
+				t.Errorf("Update(dry run) = %v", err)
+			}
+
+			res, err := f.update(core.UpdateOptions{Commit: true})
+			if !c.all {
+				wantErr(t, "Update(all)", err, core.ErrUnrelatedStaged)
+				wantSameTree(t, "refused update", before, treeState(t, f.super.Dir))
+				return
+			}
+			if err != nil || res.Commit == "" ||
+				gittest.Git(t, f.super.Dir, "rev-parse", "HEAD^") != head {
+				t.Fatalf("Update(all) = %+v, %v", res, err)
+			}
+			lintMessage(t, headMessage(t, f.super.Dir))
+			// The commit records every copy as the working tree has it.
+			if status := gittest.Git(t, f.super.Dir, "status", "--porcelain"); status != "" {
+				t.Errorf("status after commit %q", status)
+			}
+			if vr, err := f.repo().Verify(t.Context(), nil, core.VerifyOptions{}); err != nil {
+				t.Errorf("Verify = %+v, %v", vr, err)
+			}
+		})
+	}
+}
+
+func TestUpdateCommitRefusesOtherSectionsUnborn(t *testing.T) {
+	t.Parallel()
+	up, commits := gittest.NewTaggedUpstream(t, gittest.SHA1)
+	dir := gittest.InitRepo(t, gittest.SHA1)
+	super := &gittest.Super{Dir: dir}
+	for _, name := range []string{"lib", "other"} {
+		gittest.Git(t, dir, "submodule", "add", "--quiet", "--", up.Bare, name)
+		super.SetKey(t, name, manifest.KeyMode, string(manifest.ModeTag))
+		super.SetKey(t, name, manifest.KeyRef, gittest.TagV100)
+	}
+	f := &fixture{t: t, up: up, commits: commits, super: super, g: gittest.Runner(t)}
+	before := treeState(t, dir)
+	// Without a commit, HEAD records neither section.
+	_, err := f.update(core.UpdateOptions{Names: []string{"lib"}, Commit: true})
+	want := unrelatedRefusal + outsideChange(manifest.File, "staged and unstaged") + ", other"
+	if !errors.Is(err, core.ErrUnrelatedStaged) || err.Error() != want {
+		t.Errorf("Update(lib) = %v, want %s", err, want)
+	}
+	wantSameTree(t, "refused update", before, treeState(t, dir))
+	res := f.mustUpdate(core.UpdateOptions{Commit: true})
+	if res.Commit == "" || !strings.HasPrefix(headMessage(t, dir), "manifest: update 2 submodules\n") {
+		t.Errorf("Update(all) = %+v\n%s", res, headMessage(t, dir))
+	}
+}
+
+func TestUpdateCommitInvalidEntryInHead(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name string
+		// damage makes the entry of lib invalid, repair makes it valid again.
+		damage, repair func(t *testing.T, f *fixture)
+		// file is the file that the update commits, and old the lock ref of
+		// the commit message.
+		file, old string
+	}{
+		{
+			"lsm-mode",
+			func(t *testing.T, f *fixture) { f.super.SetKey(t, "lib", manifest.KeyMode, "bogus") },
+			func(_ *testing.T, f *fixture) { f.mustSet("lib", manifest.ModeTag, gittest.TagV100) },
+			manifest.File, gittest.TagV100,
+		},
+		{
+			"lock entry",
+			func(t *testing.T, f *fixture) {
+				gittest.Git(t, f.super.Dir, "config", "-f", lock.File, "submodule.lib.commit", "bogus")
+			},
+			func(_ *testing.T, f *fixture) {
+				f.lock("lib", manifest.ModeTag, gittest.TagV100, f.commits[gittest.TagV100])
+			},
+			lock.File, "unlocked",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			f := newFixture(t, gittest.SHA1)
+			v100 := f.commits[gittest.TagV100]
+			for _, name := range []string{"lib", "other"} {
+				f.track(name, manifest.ModeTag, gittest.TagV100, gittest.TagV100, v100)
+			}
+			c.damage(t, f)
+			f.super.Commit(t, "damage lib")
+			c.repair(t, f)
+
+			// Only the entry of lib is not recorded; other is up to date.
+			res, err := f.update(core.UpdateOptions{Commit: true, DryRun: true})
+			if err != nil || len(res.Changes) != 2 || !res.Changes[0].Changed() ||
+				res.Changes[1].Changed() {
+				t.Fatalf("Update(dry run) = %+v, %v", res, err)
+			}
+			wantCommitted(t, f, false, c.file, "manifest: update lib to v1.0.0\n\n"+
+				"Tracking mode: tag v1.0.0\n"+
+				"Old: "+v100[:12]+" ("+c.old+")\n"+
+				"New: "+v100[:12]+" (v1.0.0)\n")
+		})
+	}
 }

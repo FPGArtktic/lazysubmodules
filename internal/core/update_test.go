@@ -297,7 +297,7 @@ func TestUpdateRefusesAll(t *testing.T) {
 	wantErr(t, "Update(all refusals)", err, core.ErrDirty, core.ErrMissingRef,
 		core.ErrUnrelatedStaged)
 	want := []string{
-		"refused: index contains unrelated staged changes: a, b, c, and 1 more",
+		"refused: the commit would include unrelated changes: a, b, c, and 1 more",
 		"dirty: refused: submodule has uncommitted changes",
 		`invalid: refused: bad ref in .gitmodules: invalid branch "a..b": ` +
 			"not a valid branch name",
@@ -607,11 +607,25 @@ func TestUpdateUpToDateStagesNothing(t *testing.T) {
 	f.super.SetKey(t, "lib", "update", "checkout")
 	f.lock("stale", manifest.ModeTag, gittest.TagV100, f.commits[gittest.TagV100])
 	before := treeState(t, f.super.Dir)
-	res := f.mustUpdate(core.UpdateOptions{Commit: true})
+	res := f.mustUpdate(core.UpdateOptions{})
 	if c := oneChange(t, res); c.Changed() || res.Commit != "" {
 		t.Errorf("Update = %+v", res)
 	}
 	wantSameTree(t, "update without changes", before, treeState(t, f.super.Dir))
+	wantStaged(t, f.super.Dir)
+
+	// A commit would include the entry of a submodule that is not selected.
+	_, err := f.update(core.UpdateOptions{Commit: true})
+	wantErr(t, "Update(commit)", err, core.ErrUnrelatedStaged)
+	wantSameTree(t, "refused update", before, treeState(t, f.super.Dir))
+	gittest.Git(t, f.super.Dir, "commit", "--quiet", "-m", "stale entry", "--", lock.File)
+	head := headOf(t, f.super.Dir)
+	before = treeState(t, f.super.Dir)
+	res = f.mustUpdate(core.UpdateOptions{Commit: true})
+	if c := oneChange(t, res); c.Changed() || res.Commit != "" || headOf(t, f.super.Dir) != head {
+		t.Errorf("Update(commit) = %+v", res)
+	}
+	wantSameTree(t, "update with commit without changes", before, treeState(t, f.super.Dir))
 	wantStaged(t, f.super.Dir)
 }
 
