@@ -9,6 +9,10 @@
 # therefore builds and caches a new image. Pull requests cannot write to the
 # cache of main. When two runs miss the cache at once, both build the image
 # and the later cache save is skipped.
+#
+# The coverage job publishes the coverage badge to the branch "badges" on a
+# push to main. Pushes made with GITHUB_TOKEN start no workflow run, and this
+# workflow runs only for main and pull requests anyway.
 name: ci
 
 on:
@@ -25,6 +29,8 @@ permissions:
 # group of its own (the commit), so no push run is ever cancelled, and none is
 # replaced while it waits, which a shared group would do. gitlint lints only
 # the commits of its own push, so a replaced run would leave commits unchecked.
+# Runs on main may therefore overlap; the coverage badge is published only by
+# the run of the commit that is still the tip of main when it publishes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -135,6 +141,71 @@ jobs:
             dist/*.txt
           if-no-files-found: error
           retention-days: 14
+
+  # The test suite once more, with coverage, next to the build job. On a cache
+  # miss this job builds the image as well, but leaves saving it to the build
+  # job.
+  coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # For the last step, which pushes the branch "badges" and is the only run
+    # step that gets the token; the checkout uses it to fetch and keeps no
+    # credentials. The step does not run for pull requests, whose token is
+    # read-only anyway when they come from a fork. The tests run before it in
+    # a container, without network access and without the token, but the
+    # checkout is mounted into that container, so the step trusts the code of
+    # main as much as this file (see CONTRIBUTING.md).
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve build image
+        id: image
+        run: |
+          ref="$(scripts/build-in-container.sh image-tag)"
+          echo "ref=${ref}" >>"$GITHUB_OUTPUT"
+          echo "archive=${RUNNER_TEMP}/build-image.tar" >>"$GITHUB_OUTPUT"
+
+      - name: Restore build image
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.image.outputs.archive }}
+          key: build-image-${{ steps.image.outputs.ref }}
+
+      - name: image (load)
+        if: steps.cache.outputs.cache-hit == 'true'
+        env:
+          IMAGE_ARCHIVE: ${{ steps.image.outputs.archive }}
+        run: scripts/build-in-container.sh image-load
+
+      - name: image (build)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: scripts/build-in-container.sh image
+
+      - name: coverage
+        run: scripts/build-in-container.sh coverage
+
+      - name: Coverage summary
+        run: cat coverage/summary.md >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish coverage badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/publish-coverage-badge.sh coverage/badge.json
 
   compat:
     name: compat (git 2.39)

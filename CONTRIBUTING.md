@@ -101,6 +101,7 @@ The full CI sequence is:
 
 ```sh
 scripts/build-in-container.sh image gitlint lint licenses test build snapshot package-test
+scripts/build-in-container.sh image coverage
 scripts/build-in-container.sh test-compat
 ```
 
@@ -659,7 +660,73 @@ earlier report first:
   cores, both used about 940 CPU seconds (September 2026). A repeated run
   with unchanged code takes well under a minute, because `go test` caches
   most results of coverage runs in the `lazysubmodules-go-build` volume,
-  as it does for `test`.
+  as it does for `test`. In CI the `coverage` job runs in parallel with
+  the build job, so the workflow takes no longer, but it occupies a
+  second runner for about as long as the `test` step.
+
+### Coverage in CI
+
+The `coverage` job of `.github/workflows/ci.yml` runs next to the build
+job, for every pull request and every push to `main`. It restores or
+builds the build image like the build job (only the build job saves it),
+runs `coverage`, adds `summary.md` to the job summary and uploads
+`coverage/` as the artifact `coverage`, kept for 14 days.
+
+On a push to `main`, its last step runs
+`scripts/publish-coverage-badge.sh coverage/badge.json`. The script
+replaces the branch `badges` with a single new commit by
+`github-actions[bot]` that holds `coverage.json`, a copy of `badge.json`,
+and a README that says that the branch is generated. The README badge
+reads `coverage.json` through `raw.githubusercontent.com` and shields.io,
+which both cache it for a few minutes.
+
+- **Only the newest commit:** runs on `main` are never cancelled, so they
+  can finish out of order. The script publishes only when its commit is
+  still the tip of `main`, and pushes with `--force-with-lease`, so a
+  late run of an older commit never overwrites the badge of a newer one.
+  When the run of the newest commit fails, the badge keeps the previous
+  value until a later run succeeds.
+- **Token:** only the `coverage` job has `contents: write`, and only its
+  last step receives `GITHUB_TOKEN`; it does not run for pull requests.
+  The checkout keeps no credentials (`persist-credentials: false`). The
+  script runs `git` only in a new repository in a temporary directory and
+  passes the token as an HTTP header in `GIT_CONFIG_*` environment
+  variables, so it is written neither to a `.git/config` nor to a command
+  line, and it ignores the Git configuration of the user, of the system
+  and of the checkout.
+- **What the container does not protect:** the tests run before that step
+  in a container without network access and without the token, but the
+  checkout is mounted into the container, so they can change the files
+  that the step afterwards runs, the script included. The step therefore
+  trusts the code of `main` as much as the workflow file itself, which
+  the same code review protects. Publishing from a job of its own, with a
+  fresh checkout and the badge from the artifact, would make the
+  container a boundary for the token as well.
+- **No loops:** a push made with `GITHUB_TOKEN` starts no workflow run,
+  and `ci.yml` runs only for pull requests and pushes to `main` anyway.
+- **The `badges` branch** is not part of the history of `main`. Do not
+  commit to it or open pull requests against it; the next run replaces it.
+  Branch rules must allow `github-actions[bot]` to force-push it. Until
+  the first run on `main` has created the branch, the README badge reads
+  "custom badge: resource not found".
+- **Trying the script:** it publishes to any remote given with
+  `--remote`, such as a local bare repository with a `main` branch, and
+  needs no token for a remote that is not `https://`. After `coverage`:
+
+  ```sh
+  git init --bare --initial-branch=main /tmp/badges.git
+  git push /tmp/badges.git HEAD:main
+  scripts/publish-coverage-badge.sh --remote /tmp/badges.git \
+      --commit "$(git rev-parse HEAD)" coverage/badge.json
+  git -C /tmp/badges.git log --stat badges
+  ```
+
+- **Why no coverage service:** services such as Codecov or Coveralls need
+  an app or a token with access to the repository, receive the test data,
+  and make CI depend on another service. The report is produced offline
+  in the build image like the other targets, the job summary and the
+  artifact stay on GitHub, and shields.io only reads the public
+  `coverage.json` to draw the badge.
 
 ## Demo and recordings
 

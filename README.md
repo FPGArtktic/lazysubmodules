@@ -4,6 +4,7 @@
 # LazySubmodules
 
 [![CI](https://github.com/FPGArtktic/lazysubmodules/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/FPGArtktic/lazysubmodules/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/FPGArtktic/lazysubmodules/badges/coverage.json)](https://github.com/FPGArtktic/lazysubmodules/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/FPGArtktic/lazysubmodules?include_prereleases&sort=semver)](https://github.com/FPGArtktic/lazysubmodules/releases)
 [![Go version](https://img.shields.io/github/go-mod/go-version/FPGArtktic/lazysubmodules)](go.mod)
 [![Go Reference](https://pkg.go.dev/badge/github.com/FPGArtktic/lazysubmodules.svg)](https://pkg.go.dev/github.com/FPGArtktic/lazysubmodules)
@@ -1212,6 +1213,31 @@ modules. [CONTRIBUTING.md](CONTRIBUTING.md) describes all build targets
 come with the third-party license notices; `scripts/third-party-licenses.sh`
 collects them (see
 [Third-party notices](CONTRIBUTING.md#third-party-notices)).
+
+### Test coverage
+
+The coverage badge shows the statement coverage of the test suite
+(`go test -race ./...`) on `main`, updated by every successful CI run of
+its newest commit. Each package counts only the statements that its own
+tests run, as `go test -cover` reports them in that run, and the total is
+the share of all statements. A few error paths only run when a test
+cancels work that runs in parallel, at a moment that differs from run to
+run, so the same code can measure a tenth or two of a point apart. CI
+measures the coverage with `scripts/build-in-container.sh coverage` and
+stores the badge value in the generated `badges` branch; no external
+coverage service is involved.
+
+Every run of the
+[CI workflow](https://github.com/FPGArtktic/lazysubmodules/actions/workflows/ci.yml)
+shows the coverage per package in its summary and keeps the full report,
+with an HTML view of the covered lines, as the artifact `coverage` for 14
+days (downloads need a GitHub account). The same report locally:
+
+```sh
+scripts/build-in-container.sh coverage   # coverage/coverage.html, coverage/summary.md
+```
+
+See [Test coverage](CONTRIBUTING.md#test-coverage) for the details.
 
 ## Known limitations
 
