@@ -47,6 +47,90 @@ func (r *Runner) ConfigList(ctx context.Context, dir, file string) ([]ConfigEntr
 	return parseConfigList(out), nil
 }
 
+// ConfigListRev reads all variables of a configuration file as recorded in
+// the tree of a revision or in the index.
+//
+// The recorded file is read with "git config --blob=<object> --null
+// --list", as ConfigList reads the working tree copy. Like ConfigList, it
+// refuses an entry that is not a regular file, such as a symbolic link, a
+// directory or a submodule. Objects missing from a partial clone are not
+// fetched.
+//
+// Context: dir must be the top level of a working tree, and file is
+// relative to it; rev names a commit or tree, such as "HEAD", or is empty
+// for the index.
+// Return: the entries in file order; nil entries and a nil error when the
+// tree or the index has no such file; an error wrapping ErrInvalidRefName
+// when rev starts with "-"; an error wrapping ErrRefNotFound when rev does
+// not exist (for example an unborn HEAD); an error wrapping ErrUnmerged when
+// the index holds conflict stages for file; an error wrapping
+// ErrNotRegularFile; or *Error, for example when rev names no tree or the
+// content is missing from a partial clone.
+func (r *Runner) ConfigListRev(ctx context.Context, dir, rev, file string) ([]ConfigEntry, error) {
+	var (
+		blob string
+		err  error
+	)
+	if rev == "" {
+		blob, err = r.indexBlob(ctx, dir, file)
+	} else {
+		blob, err = r.treeBlob(ctx, dir, rev, file)
+	}
+	if err != nil || blob == "" {
+		return nil, err
+	}
+	out, err := r.runOffline(ctx, dir, "config", "--blob="+blob, "--null", "--list")
+	if err != nil {
+		return nil, err
+	}
+	return parseConfigList(out), nil
+}
+
+// indexBlob returns the object recorded for file in the index, or "" when
+// the index has no such file.
+func (r *Runner) indexBlob(ctx context.Context, dir, file string) (string, error) {
+	want := cleanPath(file)
+	out, err := r.runOffline(ctx, dir, literalPathspecs, "ls-files", "--stage", "-z", "--", want)
+	if err != nil {
+		return "", err
+	}
+	for _, rec := range splitNUL(out) {
+		// "<mode> <object> <stage>\t<path>"
+		meta, name, _ := strings.Cut(rec, "\t")
+		fields := strings.Fields(meta)
+		switch {
+		case strings.HasPrefix(name, want+"/"):
+			// The index has no entry for a directory, only for its content.
+			return "", fmt.Errorf("config file %s in the index: %w", file, ErrNotRegularFile)
+		case name != want || len(fields) != 3:
+			continue
+		case fields[2] != "0":
+			return "", fmt.Errorf("config file %s in the index: %w", file, ErrUnmerged)
+		}
+		return regularBlob(file+" in the index", fields[0], fields[1])
+	}
+	return "", nil
+}
+
+// treeBlob returns the object recorded for file in the tree of rev, or ""
+// when the tree has no such file.
+func (r *Runner) treeBlob(ctx context.Context, dir, rev, file string) (string, error) {
+	mode, object, err := r.treeEntry(ctx, dir, rev, file)
+	if err != nil || object == "" {
+		return "", err
+	}
+	return regularBlob(file+" in "+rev, mode, object)
+}
+
+// regularBlob returns object when mode is the mode of a regular file, and
+// an error wrapping ErrNotRegularFile naming what otherwise.
+func regularBlob(what, mode, object string) (string, error) {
+	if mode != "100644" && mode != "100755" {
+		return "", fmt.Errorf("config file %s: %w", what, ErrNotRegularFile)
+	}
+	return object, nil
+}
+
 // parseConfigList parses the output of "git config --null --list", where
 // each record is "key\nvalue\0", or "key\0" for an implicit true.
 func parseConfigList(out string) []ConfigEntry {

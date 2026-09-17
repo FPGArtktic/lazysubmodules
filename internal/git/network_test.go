@@ -167,6 +167,15 @@ func TestReadHelpersPartialClone(t *testing.T) {
 		if treeless := filter == "tree:0"; isGitErr != treeless || (!treeless && err != nil) {
 			t.Errorf("%s: TreeGitlink(HEAD~1) = %q, %v", filter, gitlink, err)
 		}
+		// Both clones have the blobs of HEAD only.
+		entries, err := r.ConfigListRev(ctx, clone, "HEAD", ".gitmodules")
+		if err != nil || len(entries) != 3 {
+			t.Errorf("%s: ConfigListRev(HEAD) = %q, %v; want 3 entries", filter, entries, err)
+		}
+		entries, err = r.ConfigListRev(ctx, clone, "HEAD~1", ".gitmodules")
+		if _, ok := errors.AsType[*git.Error](err); !ok || entries != nil {
+			t.Errorf("%s: ConfigListRev(HEAD~1) = %q, %v; want *git.Error", filter, entries, err)
+		}
 		if got := missingObjects(t, clone); !slices.Equal(got, missing) {
 			t.Errorf("%s: missing objects changed from %q to %q", filter, missing, got)
 		}

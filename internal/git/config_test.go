@@ -55,16 +55,7 @@ func TestConfigList(t *testing.T) {
 	r := gittest.Runner(t)
 	dir := t.TempDir()
 	gittest.WriteFile(t, filepath.Join(dir, ".gitmodules"), sampleConfig)
-	want := []git.ConfigEntry{
-		{Key: "submodule.kernel.path", Value: "kernel"},
-		{Key: "submodule.kernel.url", Value: "https://git.example.org/linux.git"},
-		{Key: "submodule.kernel.lsm-mode", Value: "tag-pattern"},
-		{Key: "submodule.kernel.lsm-ref", Value: "v6.6.*"},
-		{Key: "submodule.a.b.path", Value: "dotted"},
-		{Key: "submodule.a.b.flag", Value: ""},
-		{Key: "submodule.Kernel.path", Value: "other"},
-		{Key: "submodule.Kernel.x", Value: "  spaced\tvalue  "},
-	}
+	want := sampleEntries()
 	got, err := r.ConfigList(t.Context(), dir, ".gitmodules")
 	if err != nil || !slices.Equal(got, want) {
 		t.Errorf("ConfigList(relative) =\n%q, %v\nwant\n%q", got, err, want)
@@ -314,5 +305,197 @@ func TestConfigRefusesNonRegularFiles(t *testing.T) {
 	}
 	if exists(t, filepath.Join(outside, "created")) {
 		t.Errorf("dangling link target created")
+	}
+}
+
+// sampleEntries returns what ConfigList returns for sampleConfig.
+func sampleEntries() []git.ConfigEntry {
+	return []git.ConfigEntry{
+		{Key: "submodule.kernel.path", Value: "kernel"},
+		{Key: "submodule.kernel.url", Value: "https://git.example.org/linux.git"},
+		{Key: "submodule.kernel.lsm-mode", Value: "tag-pattern"},
+		{Key: "submodule.kernel.lsm-ref", Value: "v6.6.*"},
+		{Key: "submodule.a.b.path", Value: "dotted"},
+		{Key: "submodule.a.b.flag", Value: ""},
+		{Key: "submodule.Kernel.path", Value: "other"},
+		{Key: "submodule.Kernel.x", Value: "  spaced\tvalue  "},
+	}
+}
+
+func TestConfigListRev(t *testing.T) {
+	t.Parallel()
+	for _, format := range formats() {
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+			r := gittest.Runner(t)
+			ctx := t.Context()
+			dir := gittest.NewSuper(t, format).Dir
+			for _, file := range []string{".lsm.lock", "conf/sub/c"} {
+				gittest.WriteFile(t, filepath.Join(dir, file), sampleConfig)
+			}
+			gittest.Git(t, dir, "add", "--all")
+			gittest.Git(t, dir, "commit", "--quiet", "-m", "add configuration")
+			gittest.WriteFile(t, filepath.Join(dir, ".lsm.lock"), "[a]\n\tb = staged\n")
+			gittest.Git(t, dir, "add", ".lsm.lock")
+			gittest.WriteFile(t, filepath.Join(dir, ".lsm.lock"), "[a]\n\tb = worktree\n")
+
+			tree := gittest.Git(t, dir, "rev-parse", "HEAD^{tree}")
+			tests := []struct {
+				rev, file string
+				want      []git.ConfigEntry
+			}{
+				{"HEAD", ".lsm.lock", sampleEntries()},
+				{"main", ".lsm.lock", sampleEntries()},
+				{tree, ".lsm.lock", sampleEntries()},
+				{"", ".lsm.lock", []git.ConfigEntry{{Key: "a.b", Value: "staged"}}},
+				{"HEAD~1", ".lsm.lock", nil}, // before the file was added
+				{"HEAD", "conf/sub/c", sampleEntries()},
+				{"HEAD", "./conf/sub/c", sampleEntries()},
+				{"", "conf/sub/c", sampleEntries()},
+				{"", "./conf/sub/c", sampleEntries()},
+			}
+			for _, rev := range []string{"HEAD", ""} {
+				for _, file := range []string{"missing", "conf/missing", ".lsm.lock/x"} {
+					tests = append(tests, struct {
+						rev, file string
+						want      []git.ConfigEntry
+					}{rev, file, nil})
+				}
+			}
+			for _, tt := range tests {
+				got, err := r.ConfigListRev(ctx, dir, tt.rev, tt.file)
+				if err != nil || !slices.Equal(got, tt.want) {
+					t.Errorf("ConfigListRev(%q, %q) = %q, %v; want %q",
+						tt.rev, tt.file, got, err, tt.want)
+				}
+			}
+			got, err := r.ConfigList(ctx, dir, ".lsm.lock")
+			if want := []git.ConfigEntry{{Key: "a.b", Value: "worktree"}}; err != nil ||
+				!slices.Equal(got, want) {
+				t.Errorf("ConfigList = %q, %v; want %q", got, err, want)
+			}
+		})
+	}
+}
+
+func TestConfigListRevUnborn(t *testing.T) {
+	t.Parallel()
+	for _, format := range formats() {
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+			r := gittest.Runner(t)
+			ctx := t.Context()
+			dir := gittest.InitRepo(t, format)
+			got, err := r.ConfigListRev(ctx, dir, "", ".gitmodules")
+			if got != nil || err != nil {
+				t.Errorf("ConfigListRev(empty index) = %q, %v; want nil, nil", got, err)
+			}
+			gittest.WriteFile(t, filepath.Join(dir, ".gitmodules"), sampleConfig)
+			gittest.Git(t, dir, "add", ".gitmodules")
+			got, err = r.ConfigListRev(ctx, dir, "HEAD", ".gitmodules")
+			if got != nil || !errors.Is(err, git.ErrRefNotFound) {
+				t.Errorf("ConfigListRev(unborn HEAD) = %q, %v; want ErrRefNotFound", got, err)
+			}
+			got, err = r.ConfigListRev(ctx, dir, "", ".gitmodules")
+			if err != nil || !slices.Equal(got, sampleEntries()) {
+				t.Errorf("ConfigListRev(index) = %q, %v; want %q", got, err, sampleEntries())
+			}
+		})
+	}
+}
+
+func TestConfigListRevErrors(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, gittest.SHA1)
+	r := gittest.Runner(t)
+	ctx := t.Context()
+	dir := f.super.Dir
+	if err := os.Symlink(".gitmodules", filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	gittest.WriteFile(t, filepath.Join(dir, "dir", "c"), sampleConfig)
+	gittest.WriteFile(t, filepath.Join(dir, "bad"), "[unterminated\n")
+	gittest.WriteFile(t, filepath.Join(dir, "exec"), sampleConfig)
+	if err := os.Chmod(filepath.Join(dir, "exec"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Git(t, dir, "add", "--all")
+	gittest.Git(t, dir, "commit", "--quiet", "-m", "add files")
+	blob := gittest.Git(t, dir, "rev-parse", "HEAD:bad")
+
+	for _, rev := range []string{"HEAD", ""} {
+		got, err := r.ConfigListRev(ctx, dir, rev, "exec")
+		if err != nil || !slices.Equal(got, sampleEntries()) {
+			t.Errorf("ConfigListRev(%q, exec) = %q, %v; want the entries", rev, got, err)
+		}
+		// A symbolic link, a submodule and a directory.
+		for _, file := range []string{"link", f.path, f.path + "/", "dir", "dir/"} {
+			got, err := r.ConfigListRev(ctx, dir, rev, file)
+			if got != nil || !errors.Is(err, git.ErrNotRegularFile) {
+				t.Errorf("ConfigListRev(%q, %s) = %q, %v; want ErrNotRegularFile",
+					rev, file, got, err)
+			}
+		}
+		got, err = r.ConfigListRev(ctx, dir, rev, "bad")
+		if _, ok := errors.AsType[*git.Error](err); !ok || got != nil {
+			t.Errorf("ConfigListRev(%q, bad) = %q, %v; want *git.Error", rev, got, err)
+		}
+	}
+	for _, rev := range []string{"-x", "--output=x", "-"} {
+		got, err := r.ConfigListRev(ctx, dir, rev, "exec")
+		if got != nil || !errors.Is(err, git.ErrInvalidRefName) {
+			t.Errorf("ConfigListRev(%q) = %q, %v; want ErrInvalidRefName", rev, got, err)
+		}
+	}
+	for _, rev := range []string{"nope", "HEAD~9"} {
+		got, err := r.ConfigListRev(ctx, dir, rev, "exec")
+		if got != nil || !errors.Is(err, git.ErrRefNotFound) {
+			t.Errorf("ConfigListRev(%q) = %q, %v; want ErrRefNotFound", rev, got, err)
+		}
+	}
+	got, err := r.ConfigListRev(ctx, dir, blob, "exec")
+	if _, ok := errors.AsType[*git.Error](err); !ok || got != nil {
+		t.Errorf("ConfigListRev(blob) = %q, %v; want *git.Error", got, err)
+	}
+	for _, rev := range []string{"HEAD", ""} {
+		got, err := r.ConfigListRev(ctx, t.TempDir(), rev, "exec")
+		if _, ok := errors.AsType[*git.Error](err); !ok || got != nil {
+			t.Errorf("ConfigListRev(%q) outside a repository = %q, %v; want *git.Error",
+				rev, got, err)
+		}
+	}
+}
+
+func TestConfigListRevUnmerged(t *testing.T) {
+	t.Parallel()
+	r := gittest.Runner(t)
+	ctx := t.Context()
+	dir := gittest.NewSuper(t, gittest.SHA1).Dir
+	commit := func(value string) {
+		gittest.WriteFile(t, filepath.Join(dir, "c"), "[a]\n\tb = "+value+"\n")
+		gittest.Git(t, dir, "commit", "--quiet", "--all", "--message="+value)
+	}
+	gittest.WriteFile(t, filepath.Join(dir, "c"), "")
+	gittest.Git(t, dir, "add", "c")
+	commit("base")
+	gittest.Git(t, dir, "checkout", "--quiet", "-b", "other")
+	commit("theirs")
+	gittest.Git(t, dir, "checkout", "--quiet", "main")
+	commit("ours")
+	_, err := r.Run(ctx, dir, "merge", "--quiet", "other")
+	if _, ok := errors.AsType[*git.Error](err); !ok {
+		t.Fatalf("merge = %v, want a conflict", err)
+	}
+
+	got, err := r.ConfigListRev(ctx, dir, "", "c")
+	if got != nil || !errors.Is(err, git.ErrUnmerged) {
+		t.Errorf("ConfigListRev(unmerged) = %q, %v; want ErrUnmerged", got, err)
+	}
+	for rev, value := range map[string]string{"HEAD": "ours", "MERGE_HEAD": "theirs"} {
+		got, err := r.ConfigListRev(ctx, dir, rev, "c")
+		if want := []git.ConfigEntry{{Key: "a.b", Value: value}}; err != nil ||
+			!slices.Equal(got, want) {
+			t.Errorf("ConfigListRev(%s) = %q, %v; want %q", rev, got, err, want)
+		}
 	}
 }

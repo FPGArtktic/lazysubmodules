@@ -27,6 +27,9 @@ var (
 	// file, so a link committed to a repository could redirect a write to a
 	// file outside of it.
 	ErrNotRegularFile = errors.New("not a regular file")
+	// ErrUnmerged is returned when the index holds the conflict stages of an
+	// unfinished merge for a path instead of a single entry.
+	ErrUnmerged = errors.New("unmerged path")
 )
 
 // redacted replaces the user information of URLs in messages.

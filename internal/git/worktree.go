@@ -308,30 +308,46 @@ func (r *Runner) IndexGitlink(ctx context.Context, dir, p string) (string, error
 // example when rev names no tree or the tree is missing from a partial
 // clone.
 func (r *Runner) TreeGitlink(ctx context.Context, dir, rev, p string) (string, error) {
-	if strings.HasPrefix(rev, "-") {
-		return "", fmt.Errorf("tree: %w: %q", ErrInvalidRefName, rev)
+	mode, object, err := r.treeEntry(ctx, dir, rev, p)
+	if err != nil {
+		return "", err
 	}
-	// Only the object named by rev is verified: peeling it to a tree would
-	// report a tree missing from a partial clone as not found, while ls-tree
-	// reports it as an error.
+	if mode != gitlinkMode {
+		return "", fmt.Errorf("gitlink %s in %s: %w", p, rev, ErrRefNotFound)
+	}
+	return object, nil
+}
+
+// treeEntry returns the mode and object of path p in the tree of rev, both
+// empty when the tree has no entry at p. It fails with ErrInvalidRefName
+// when rev could be taken for an option, and with ErrRefNotFound when rev
+// does not exist. Only the object named by rev is verified: peeling it to a
+// tree would report a tree missing from a partial clone as not found, while
+// ls-tree reports it as an error.
+func (r *Runner) treeEntry(ctx context.Context, dir, rev, p string) (string, string, error) {
+	if strings.HasPrefix(rev, "-") {
+		return "", "", fmt.Errorf("tree: %w: %q", ErrInvalidRefName, rev)
+	}
 	object, err := r.verifyRev(ctx, dir, rev, rev)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	out, err := r.runOffline(ctx, dir, literalPathspecs, "ls-tree", "-z", object, "--", p)
-	if err != nil {
-		return "", err
-	}
+	// Without a trailing slash, a directory is listed itself, not its
+	// content.
 	want := cleanPath(p)
+	out, err := r.runOffline(ctx, dir, literalPathspecs, "ls-tree", "-z", object, "--", want)
+	if err != nil {
+		return "", "", err
+	}
 	for _, rec := range splitNUL(out) {
 		// "<mode> <type> <object>\t<path>"
 		meta, name, _ := strings.Cut(rec, "\t")
 		fields := strings.Fields(meta)
-		if name == want && len(fields) == 3 && fields[0] == gitlinkMode {
-			return fields[2], nil
+		if name == want && len(fields) == 3 {
+			return fields[0], fields[2], nil
 		}
 	}
-	return "", fmt.Errorf("gitlink %s in %s: %w", p, rev, ErrRefNotFound)
+	return "", "", nil
 }
 
 // cleanPath normalizes a slash-separated path as git prints it.
