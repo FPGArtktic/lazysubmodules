@@ -5,6 +5,12 @@
 # scripts/build-in-container.sh (see CONTRIBUTING.md). The build image is
 # restored from the cache that CI on main writes, or built when it is missing.
 #
+# Only a signed tag is released: the tag must be annotated, point at the
+# checked-out commit and carry a good OpenPGP signature from one of the public
+# keys in the repository variable RELEASE_TAG_KEYS (ASCII-armored). A
+# repository variable can only be changed in the repository settings, unlike
+# a key file in the tagged tree, which whoever pushes the tag controls.
+#
 # Publishing to the AUR is optional: without the AUR_KEY secret, GoReleaser
 # skips it.
 name: release
@@ -37,6 +43,41 @@ jobs:
         with:
           fetch-depth: 0 # GoReleaser needs the tags for the changelog
           persist-credentials: false
+
+      # The checkout fetches all tags as they are, so an annotated tag keeps
+      # its signature.
+      - name: Verify tag signature
+        env:
+          TAG: ${{ github.ref_name }}
+          RELEASE_TAG_KEYS: ${{ vars.RELEASE_TAG_KEYS }}
+        run: |
+          ref="refs/tags/${TAG}"
+          if [[ -z "$RELEASE_TAG_KEYS" ]]; then
+            echo "::error::the repository variable RELEASE_TAG_KEYS (OpenPGP public keys allowed to sign release tags) is not set"
+            exit 1
+          fi
+          type="$(git cat-file -t "$ref" 2>/dev/null)" || type="missing"
+          if [[ "$type" != "tag" ]]; then
+            echo "::error::${TAG} is not an annotated tag (${type}); release tags must be signed (git tag -s)"
+            exit 1
+          fi
+          if [[ "$(git rev-parse --verify "${ref}^{commit}")" != "$(git rev-parse --verify HEAD)" ]]; then
+            echo "::error::${TAG} does not point at the checked-out commit"
+            exit 1
+          fi
+          # A keyring with only the allowed keys: any good signature by one
+          # of them is accepted, any other signature is rejected.
+          GNUPGHOME="$(mktemp -d)"
+          export GNUPGHOME
+          trap 'gpgconf --kill all; rm -rf "$GNUPGHOME"' EXIT
+          if ! printf '%s\n' "$RELEASE_TAG_KEYS" | gpg --batch --quiet --import; then
+            echo "::error::RELEASE_TAG_KEYS holds no valid OpenPGP public key"
+            exit 1
+          fi
+          if ! git verify-tag "$ref"; then
+            echo "::error::${TAG} has no good signature from a key in RELEASE_TAG_KEYS"
+            exit 1
+          fi
 
       - name: Resolve build image
         id: image
