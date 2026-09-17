@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Mateusz Okulanis <FPGArtktic@outlook.com>
+#
+# Read the Docs configuration.
+#
+# For now the site is README.md rendered to a single page, with the demo GIFs
+# next to it and links to other repository files pointing to GitHub. A full
+# documentation site will replace these build commands.
+version: 2
+
+build:
+  os: ubuntu-24.04
+  tools:
+    python: "3.13"
+  commands:
+    # Python-Markdown, pinned by version and hash.
+    - >-
+      printf '%s\n'
+      'markdown==3.10.3 --hash=sha256:fa6c92a00a4a3c98b22728c64a935ae1928250ae65058a6ded814d2cc29a4cea'
+      > /tmp/rtd-requirements.txt
+    - >-
+      python -m pip install --no-cache-dir --require-hashes --only-binary=:all:
+      -r /tmp/rtd-requirements.txt
+    - mkdir -p "$READTHEDOCS_OUTPUT/html"
+    - cp -R docs "$READTHEDOCS_OUTPUT/html/docs"
+    - |
+      python - <<'EOF'
+      import os
+      import pathlib
+      import re
+
+      import markdown
+
+      REPO = "https://github.com/FPGArtktic/lazysubmodules/blob/main/"
+      out = pathlib.Path(os.environ["READTHEDOCS_OUTPUT"], "html", "index.html")
+
+      # Heading anchors as GitHub makes them, so that the README's own
+      # links work: every space becomes a hyphen, repeated or not.
+      def github_slug(value, separator):
+          value = re.sub(r"[^\w\- ]", "", value.strip().lower())
+          return value.replace(" ", separator)
+
+      body = markdown.markdown(
+          pathlib.Path("README.md").read_text(encoding="utf-8"),
+          extensions=["extra", "toc", "sane_lists"],
+          extension_configs={"toc": {"slugify": github_slug}},
+      )
+
+      # Links to repository files lead to GitHub; anchors, absolute URLs and
+      # the copied docs/ tree stay as they are.
+      def repo_link(match):
+          attr, target = match.group(1), match.group(2)
+          if re.match(r"([a-z]+:|#|docs/)", target):
+              return match.group(0)
+          return f'{attr}="{REPO}{target}"'
+
+      body = re.sub(r'(href|src)="([^"]*)"', repo_link, body)
+      out.write_text(f"""<!DOCTYPE html>
+      <html lang="en">
+      <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>LazySubmodules</title>
+      <style>
+      :root {{ color-scheme: light dark; }}
+      body {{ max-width: 52rem; margin: 2rem auto; padding: 0 1rem;
+             font: 16px/1.6 system-ui, sans-serif; }}
+      img {{ max-width: 100%; }}
+      pre {{ overflow-x: auto; padding: .75rem; border-radius: 6px;
+            background: rgba(127, 127, 127, .12); }}
+      code {{ font-family: ui-monospace, monospace; }}
+      table {{ border-collapse: collapse; display: block; overflow-x: auto; }}
+      th, td {{ border: 1px solid rgba(127, 127, 127, .35); padding: .3rem .6rem; }}
+      </style>
+      </head>
+      <body>
+      {body}
+      </body>
+      </html>
+      """, encoding="utf-8")
+      EOF
