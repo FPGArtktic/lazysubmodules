@@ -23,6 +23,7 @@ license, `GPL-3.0-only` (see [LICENSE](LICENSE)), and you certify the
 - [Commit messages](#commit-messages)
 - [Testing rules](#testing-rules)
 - [Dependencies](#dependencies)
+- [Third-party notices](#third-party-notices)
 - [Stable interfaces](#stable-interfaces)
 - [Pull requests and releases](#pull-requests-and-releases)
 
@@ -64,7 +65,7 @@ Targets run in the given order and the script stops at the first failure:
 | `snapshot` | `goreleaser release --snapshot --clean`, unsigned, output in `dist/` |
 | `release` | `goreleaser release --clean` (CI only: needs network and credentials) |
 | `test-compat` | `go test -race ./...` with Git 2.39.5, the oldest supported Git |
-| `package-test` | Install the `dist/` `.deb` in Debian and the `.rpm` in Fedora, for the host architecture, then run `lazysubmodules version` and `lsm version` |
+| `package-test` | Install the `dist/` `.deb` in Debian and the `.rpm` in Fedora, for the host architecture, run `lazysubmodules version` and `lsm version`, and check the installed license notices (see [Third-party notices](#third-party-notices)) |
 | `image` | Build the build image from `Containerfile`, unless it exists |
 | `image-tag` | Print the build image reference |
 | `image-save` | Save the build image to the archive `IMAGE_ARCHIVE` |
@@ -560,6 +561,80 @@ package. A new dependency needs a good reason and a compatible license.
 
   Commit `go.mod`, `go.sum` and `vendor/` together.
 
+## Third-party notices
+
+The release binary is statically linked. It contains the Go standard
+library and the modules from `vendor/` that `cmd/lazysubmodules` imports.
+Their licenses (currently MIT and BSD-3-Clause) require their copyright
+notices and license texts to accompany every binary distribution. Modules
+that only tests import are not linked and need no notice.
+
+`scripts/third-party-licenses.sh` collects the notices. GoReleaser runs it
+as a before hook, so `snapshot` and `release` include them without a
+manual step. The script works offline from `vendor/` and runs
+`go-licenses save` from the build image for `linux/amd64` and
+`linux/arm64`. It writes `build/third-party/`, which git ignores:
+
+| File | Content |
+|---|---|
+| `THIRD_PARTY_NOTICES` | One stanza per module: `Module`, `Version`, `License` (SPDX identifier) and `Text`, the license file relative to the notices file |
+| `licenses/` | The license files; `licenses/std/LICENSE` is the license of Go |
+| `copyright` | Debian copyright file: the project notice, the stanzas and all license texts |
+
+Where the notices are installed:
+
+| Artifact | Location |
+|---|---|
+| Archives | `THIRD_PARTY_NOTICES` and `licenses/`, next to `LICENSE` |
+| `.rpm` | `/usr/share/licenses/lazysubmodules/`: `LICENSE` and `THIRD_PARTY_NOTICES` (both `%license`) and `licenses/` |
+| `.deb` | `/usr/share/doc/lazysubmodules/copyright` |
+| AUR `-bin` recipe | `/usr/share/licenses/lazysubmodules/`, laid out as in the archive |
+
+The locations follow each distribution's rules:
+
+- **Fedora:** license files belong in `/usr/share/licenses/<package>/`.
+  rpm installs `%license` files even when documentation is excluded, as it
+  is in the Fedora container images.
+- **Debian:** Debian Policy puts all copyright and license information in
+  `/usr/share/doc/<package>/copyright`. Minimal installations, such as the
+  Debian container images, exclude every other file in `/usr/share/doc`.
+- **Arch Linux:** license files belong in `/usr/share/licenses/<package>/`.
+
+The notices are checked in two places:
+
+- **The script** fails when go-licenses recognizes no license for a linked
+  module, when a license file is outside that module's directory in
+  `vendor/`, or when go-licenses saves a file that no stanza names.
+- **`package-test`** compares the installed notices with the build
+  information of the installed binary. Every module listed there, and
+  `std`, needs a stanza with the same version, and every license text must
+  be installed. For the `.rpm`, the `License` tag must also equal
+  `GPL-3.0-only` joined with the licenses in the notices by `AND`.
+
+When the dependencies change:
+
+- **A license new to the binary:** add it to the SPDX expression in the
+  `license` field of `nfpms` in `.goreleaser.yaml`. The generated `-bin`
+  recipe reuses that field, and `package-test` fails until the field is
+  updated. The license must be on the allowed list (see
+  [Dependencies](#dependencies)).
+- **A `NOTICE` file:** go-licenses saves `NOTICE`, `NOTICE.txt` and
+  `NOTICE.md` next to the license of a module; Apache-2.0 requires them
+  to be passed on. The script does not reference them in the stanzas or
+  the Debian `copyright` file yet, so it fails until that support is
+  added (together with a check in `package-test`).
+- **A new target platform:** add it to the arguments of the before hook as
+  well. go-licenses only looks at the packages built for the platforms it
+  is given.
+- **A license that requires distributing the source code:**
+  `go-licenses save` would copy the module's source into `licenses/`,
+  which makes the script fail as well. Such licenses are not on the
+  allowed list and need a review first.
+
+To inspect the notices, run `snapshot` and read `build/third-party/`.
+With `go` and `go-licenses` installed on the host, run the script
+directly: `scripts/third-party-licenses.sh -h` lists its options.
+
 ## Stable interfaces
 
 - **Porcelain v1:** the output of `status --porcelain=v1` is a stable
@@ -603,3 +678,5 @@ package. A new dependency needs a good reason and a compatible license.
   the README links to it again. GoReleaser also generates a
   `lazysubmodules-bin` recipe, but publishes it only when the `AUR_KEY`
   secret is set, which the project does not do.
+- Release archives and packages include the third-party license notices
+  (see [Third-party notices](#third-party-notices)).

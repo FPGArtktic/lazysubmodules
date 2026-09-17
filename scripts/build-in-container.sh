@@ -86,6 +86,53 @@ readonly PACKAGE_CHECK='
 	git --version
 '
 
+# Checks of the license notices, run by package-test after PACKAGE_CHECK. The
+# install command sets "notices" to the installed notices file, and "texts"
+# to "files" when the license texts are files next to it or to "inline" when
+# they follow its stanzas after a line "==> FILE <==". The binary is stripped,
+# but its build information keeps plain text lines "dep<TAB>module<TAB>version",
+# each optionally followed by a replacement "=><TAB>module<TAB>version". Every
+# module listed there, and the Go standard library ("std"), needs a stanza
+# with the same version, and every license text a stanza names must be
+# there. Debian's sh has no pipefail, hence the checks of the pipeline
+# results.
+# shellcheck disable=SC2016
+readonly NOTICES_CHECK='
+	fail() { echo "error: $*" >&2; exit 1; }
+	tab="$(printf "\t")"
+	test -s "$notices" || fail "${notices} is missing or empty"
+	grep -a -E "^(dep|=>)${tab}" "$(command -v lazysubmodules)" | cut -f 1-3 >/tmp/deps
+	test -s /tmp/deps || fail "no modules in the build information of the binary"
+	cat >/tmp/deps.awk <<-"EOF"
+		$1 == "dep" { if (p != "") print p; m = $2; p = $2 " " $3 }
+		$1 == "=>" { p = m " " ($2 == m ? $3 : $2 " " $3) }
+		END { if (p != "") print p }
+	EOF
+	cat >/tmp/stanzas.awk <<-"EOF"
+		/^==> / { exit }
+		/^Module: / { m = substr($0, 9) }
+		/^Version: / { print m " " substr($0, 10) }
+	EOF
+	awk -F "$tab" -f /tmp/deps.awk /tmp/deps | LC_ALL=C sort -u >/tmp/want
+	awk -f /tmp/stanzas.awk "$notices" | LC_ALL=C sort -u >/tmp/have
+	test -s /tmp/want || fail "no modules in the build information of the binary"
+	if LC_ALL=C comm -23 /tmp/want /tmp/have | grep .; then
+		fail "modules of the binary without a notice in ${notices}"
+	fi
+	grep -q "^std go[0-9]" /tmp/have || fail "no notice for the Go standard library (std)"
+	sed -n "/^==> /q; s/^Text: //p" "$notices" | LC_ALL=C sort -u >/tmp/texts
+	test -s /tmp/texts || fail "no license texts named in ${notices}"
+	while IFS= read -r text; do
+		case "$texts" in
+		files) test -s "${notices%/*}/${text}" ;;
+		inline) grep -q -x -F "==> ${text} <==" "$notices" ;;
+		*) false ;;
+		esac || fail "license text ${text} missing"
+	done </tmp/texts
+	echo "notices: $(wc -l </tmp/want) modules and std," \
+		"$(wc -l </tmp/texts) license texts in ${notices}"
+'
+
 # Set once by select_engine and select_image. ENGINE_KIND is podman, docker
 # (rootful) or docker-rootless.
 ENGINE=""
@@ -125,9 +172,10 @@ usage()
 		  test-compat   go test -race ./... with git 2.39, the oldest supported
 		                git (golang:1.27.1-bookworm)
 		  package-test  install the snapshot .deb (Debian trixie) and .rpm
-		                (Fedora 44) for the host architecture from dist/ and run
-		                "lazysubmodules version" and "lsm version"; needs
-		                network for the git dependency
+		                (Fedora 44) for the host architecture from dist/, run
+		                "lazysubmodules version" and "lsm version", and check
+		                the installed license notices; needs network for the
+		                git dependency
 
 		Build image management:
 		  image         build the build image from the Containerfile, unless it
@@ -696,14 +744,15 @@ find_package()
 # install_package IMAGE PACKAGE INSTALL-COMMAND
 #
 # Install dist/PACKAGE in a fresh container of IMAGE with INSTALL-COMMAND,
-# which receives the package path as "$1", then run PACKAGE_CHECK. The
-# container runs as its own root user, and dist/ is mounted read-only.
+# which receives the package path as "$1" and sets the variables of
+# NOTICES_CHECK, then run PACKAGE_CHECK and NOTICES_CHECK. The container runs
+# as its own root user, and dist/ is mounted read-only.
 install_package()
 {
 	log "installing ${2} in ${1%%@*}"
 	"$ENGINE" run --rm --pull=missing \
 		--volume "${REPO_ROOT}/dist:/dist:ro,Z" \
-		"$1" sh -euc "${3}${PACKAGE_CHECK}" sh "/dist/${2}"
+		"$1" sh -euc "${3}${PACKAGE_CHECK}${NOTICES_CHECK}" sh "/dist/${2}"
 }
 
 target_package_test()
@@ -731,6 +780,10 @@ target_package_test()
 		apt-get update -qq
 		apt-get install -y -qq --no-install-recommends "$1" >/dev/null
 		dpkg-query -W -f "\${Package} \${Version} depends: \${Depends}\n" lazysubmodules
+		# The only file of /usr/share/doc that the image does not exclude.
+		notices=/usr/share/doc/lazysubmodules/copyright
+		texts=inline
+		dpkg-query -L lazysubmodules | grep -q -x -F "$notices"
 	' || return 1
 	# shellcheck disable=SC2016 # expanded by the container's shell
 	install_package "$RPM_TEST_IMAGE" "$rpm" '
@@ -738,6 +791,18 @@ target_package_test()
 			{ cat /tmp/dnf.log >&2; exit 1; }
 		rpm -q --queryformat "%{NAME} %{VERSION}-%{RELEASE}\n" lazysubmodules
 		rpm -q --requires lazysubmodules
+		notices=/usr/share/licenses/lazysubmodules/THIRD_PARTY_NOTICES
+		texts=files
+		# %license files, installed although the image excludes documentation
+		rpm -q --licensefiles lazysubmodules | grep -q -x -F "$notices"
+		# The License tag names the project license and those of the notices.
+		license="GPL-3.0-only$(sed -n "s/^License: / AND /p" "$notices" |
+			LC_ALL=C sort -u | tr -d "\n")"
+		rpm -q --queryformat "License: %{LICENSE}\n" lazysubmodules
+		test "$(rpm -q --queryformat "%{LICENSE}" lazysubmodules)" = "$license" || {
+			echo "error: the License tag does not match the notices: ${license}" >&2
+			exit 1
+		}
 	'
 }
 

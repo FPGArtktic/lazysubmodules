@@ -30,7 +30,8 @@
 # PLATFORM is GOOS/GOARCH, e.g. linux/arm64; the default is the platform of
 # the go command. OUTPUT-DIR defaults to build/third-party in the repository;
 # a relative OUTPUT-DIR is relative to the current directory.
-# Requires go and go-licenses, both in the build image.
+# Requires go and go-licenses, both in the build image. GoReleaser runs the
+# script as a before hook (see .goreleaser.yaml).
 
 set -euo pipefail
 

@@ -6,6 +6,11 @@
 # Run it through scripts/build-in-container.sh (snapshot, release); check it
 # with "goreleaser check" in the build image (GoReleaser v2.18.1).
 #
+# The static binary contains the Go standard library and third-party modules
+# whose licenses require their notices in binary distributions. A before hook
+# writes them to build/third-party/, and every archive and package ships them
+# (see "Third-party notices" in CONTRIBUTING.md).
+#
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 version: 2
 
@@ -15,6 +20,15 @@ before:
   hooks:
     # Fails fast, offline, when vendor/modules.txt does not match go.mod.
     - go list -mod=vendor ./...
+    # License notices of the code linked into the binary, offline from vendor/:
+    # THIRD_PARTY_NOTICES, licenses/ and a Debian copyright file. The platforms
+    # must match the builds below. They cannot go to dist/, which GoReleaser
+    # requires to be empty after the hooks (--clean empties it before them).
+    # The commit time keeps the files reproducible; with the commit date in
+    # the binary and in every mtime below, so are the archives and packages.
+    - >-
+      env SOURCE_DATE_EPOCH={{ .CommitTimestamp }}
+      scripts/third-party-licenses.sh -o build/third-party linux/amd64 linux/arm64
 
 builds:
   - id: lazysubmodules
@@ -58,6 +72,21 @@ archives:
           mode: 0644
           mtime: "{{ .CommitDate }}"
       - src: README.md
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+      - src: build/third-party/THIRD_PARTY_NOTICES
+        strip_parent: true
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+      # -> licenses/<module>/LICENSE, as named in THIRD_PARTY_NOTICES
+      - src: build/third-party/licenses/**/*
+        dst: licenses
         info:
           owner: root
           group: root
@@ -127,7 +156,10 @@ nfpms:
       Track git submodules by branch, tag, tag pattern or commit.
       LazySubmodules pins submodules in a lock file and updates them from a
       command line interface or an interactive terminal interface.
-    license: GPL-3.0-only
+    # SPDX expression of everything in the binary: the project, then the
+    # licenses listed in THIRD_PARTY_NOTICES (package-test compares them).
+    # nfpm does not expand templates here; the AUR recipe reuses the anchor.
+    license: &license GPL-3.0-only AND BSD-3-Clause AND MIT
     section: vcs
     priority: optional
     bindir: /usr/bin
@@ -138,16 +170,65 @@ nfpms:
       - src: /usr/bin/lazysubmodules
         dst: /usr/bin/lsm
         type: symlink
-      - src: LICENSE
-        dst: /usr/share/doc/lazysubmodules/LICENSE
-        file_info:
-          mode: 0644
-          mtime: "{{ .CommitDate }}"
       - src: README.md
         dst: /usr/share/doc/lazysubmodules/README.md
         file_info:
           mode: 0644
           mtime: "{{ .CommitDate }}"
+      # Debian (Policy 12.5) keeps copyright notices and license texts in
+      # /usr/share/doc/<package>/copyright, the only file of that directory
+      # that minimal installations such as the Debian container images keep
+      # (dpkg path-exclude). The file points to common-licenses/GPL-3 and
+      # contains all third-party notices.
+      - src: LICENSE
+        dst: /usr/share/doc/lazysubmodules/LICENSE
+        packager: deb
+        file_info:
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+      - src: build/third-party/copyright
+        dst: /usr/share/doc/lazysubmodules/copyright
+        packager: deb
+        file_info:
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+      # Fedora keeps license files in /usr/share/licenses/<package>/, marked
+      # %license: rpm installs them even with --excludedocs (tsflags=nodocs
+      # in the Fedora container images) and lists them with "rpm -qL".
+      # nfpm marks only single files as %license (it expands no glob for
+      # them), so the texts come as a tree of plain files, which also makes
+      # the package own its directories. The tree keeps the file modes and
+      # times that the hook sets.
+      - dst: /usr/share/doc/lazysubmodules
+        type: dir
+        packager: rpm
+        file_info:
+          mode: 0755
+          mtime: "{{ .CommitDate }}"
+      - dst: /usr/share/licenses/lazysubmodules
+        type: dir
+        packager: rpm
+        file_info:
+          mode: 0755
+          mtime: "{{ .CommitDate }}"
+      - src: LICENSE
+        dst: /usr/share/licenses/lazysubmodules/LICENSE
+        type: license
+        packager: rpm
+        file_info:
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+      - src: build/third-party/THIRD_PARTY_NOTICES
+        dst: /usr/share/licenses/lazysubmodules/THIRD_PARTY_NOTICES
+        type: license
+        packager: rpm
+        file_info:
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+      - src: build/third-party/licenses
+        dst: /usr/share/licenses/lazysubmodules/licenses
+        type: tree
+        packager: rpm
     rpm:
       summary: Track git submodules by branch, tag, tag pattern or commit
       group: Development/Tools
@@ -162,7 +243,7 @@ aurs:
     description: Track git submodules by branch, tag, tag pattern or commit
     maintainers:
       - "Mateusz Okulanis <FPGArtktic at outlook dot com>"
-    license: GPL-3.0-only
+    license: *license
     # `index` returns "" for a missing key; `.Env.AUR_KEY` errors when unset.
     private_key: '{{ index .Env "AUR_KEY" }}'
     git_url: ssh://aur@aur.archlinux.org/lazysubmodules-bin.git
@@ -193,6 +274,9 @@ aurs:
       ln -s lazysubmodules "${pkgdir}/usr/bin/lsm"
       # license
       install -Dm644 "./LICENSE" "${pkgdir}/usr/share/licenses/lazysubmodules/LICENSE"
+      # third-party notices and license texts
+      install -Dm644 -t "${pkgdir}/usr/share/licenses/lazysubmodules" "./THIRD_PARTY_NOTICES"
+      cp -r --no-preserve=mode,ownership "./licenses" "${pkgdir}/usr/share/licenses/lazysubmodules/"
       # readme
       install -Dm644 "./README.md" "${pkgdir}/usr/share/doc/lazysubmodules/README.md"
 

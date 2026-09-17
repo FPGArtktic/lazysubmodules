@@ -10,8 +10,8 @@ project.md
 /bin/
 /dist/
 
-# scripts/third-party-licenses.sh writes the license notices for archives
-# and packages to build/third-party/.
+# scripts/third-party-licenses.sh, a GoReleaser before hook, writes the
+# license notices for archives and packages to build/third-party/.
 /build/
 
 # Binaries of a plain "go build" on the host.

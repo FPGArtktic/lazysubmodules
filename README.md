@@ -201,11 +201,19 @@ submodule. It uses the same git-config format and is read and written with
 LazySubmodules runs on Linux (`amd64` and `arm64`) and needs Git 2.39 or
 later at run time.
 
+The binary is statically linked and contains the Go standard library and
+a few Go modules under the MIT and BSD-3-Clause licenses. Their copyright
+notices and license texts come with every release archive and package, as
+described below.
+
 ### Release archives
 
 Each [GitHub release](https://github.com/FPGArtktic/lazysubmodules/releases)
 has a `lazysubmodules_<version>_linux_<arch>.tar.gz` archive for `amd64` and
-`arm64`. It contains the binary, `LICENSE` and `README.md`:
+`arm64`. It contains the binary, `LICENSE`, `README.md`, and the license
+notices of the third-party code in the binary: `THIRD_PARTY_NOTICES` lists
+each module with its version and license, and `licenses/` holds the
+license texts.
 
 ```sh
 VERSION=1.2.3   # release version without the leading "v"
@@ -217,16 +225,25 @@ sudo install -m 0755 lazysubmodules /usr/local/bin/lazysubmodules
 sudo ln -s lazysubmodules /usr/local/bin/lsm   # optional short name
 ```
 
-See [Verifying releases](#verifying-releases) to check the download first.
+Keep `LICENSE`, `THIRD_PARTY_NOTICES` and `licenses/` with the binary when
+you pass it on. See [Verifying releases](#verifying-releases) to check the
+download first.
 
 ### Debian and RPM packages
 
 Each release also has `.deb` and `.rpm` packages for `amd64` and `arm64`,
 named `lazysubmodules_<version>_linux_<arch>.deb` and
-`lazysubmodules_<version>_linux_<arch>.rpm`. They install
-`/usr/bin/lazysubmodules`, the short name `/usr/bin/lsm` (a symlink), and
-`LICENSE` and `README.md` under `/usr/share/doc/lazysubmodules/`, and they
-depend on `git`, which the package manager installs when it is missing:
+`lazysubmodules_<version>_linux_<arch>.rpm`. They depend on `git`, which
+the package manager installs when it is missing, and install:
+
+- `/usr/bin/lazysubmodules` and the short name `/usr/bin/lsm` (a symlink);
+- `README.md` under `/usr/share/doc/lazysubmodules/`;
+- **`.deb`:** `LICENSE` in the same directory, and the Debian copyright
+  file `/usr/share/doc/lazysubmodules/copyright` with the notices and
+  license texts of the third-party code;
+- **`.rpm`:** `LICENSE`, `THIRD_PARTY_NOTICES` and `licenses/` under
+  `/usr/share/licenses/lazysubmodules/` (`rpm -qL lazysubmodules` lists
+  the license files).
 
 ```sh
 VERSION=1.2.3   # release version without the leading "v"
@@ -245,7 +262,7 @@ sudo dnf install "./lazysubmodules_${VERSION}_linux_${ARCH}.rpm"
 The packages are not signed themselves; check them against the signed
 `checksums.txt` first (see [Verifying releases](#verifying-releases)).
 CI installs the `amd64` packages built from every change in Debian and
-Fedora and runs them.
+Fedora, runs them and checks the installed license notices.
 
 ### Arch Linux (AUR)
 
@@ -853,7 +870,10 @@ go test -race ./...
 
 Dependencies are vendored in `vendor/`, so neither build downloads
 modules. [CONTRIBUTING.md](CONTRIBUTING.md) describes all build targets
-(`test`, `lint`, `snapshot`, ...).
+(`test`, `lint`, `snapshot`, ...). A binary you build yourself does not
+come with the third-party license notices; `scripts/third-party-licenses.sh`
+collects them (see
+[Third-party notices](CONTRIBUTING.md#third-party-notices)).
 
 ## Known limitations
 
@@ -882,6 +902,12 @@ LazySubmodules is free software: you can redistribute it and/or modify it
 under the terms of the GNU General Public License, version 3 only
 (`GPL-3.0-only`), as published by the Free Software Foundation. See
 [LICENSE](LICENSE) for the full text.
+
+The release binaries also contain the Go standard library and Go modules
+under the BSD-3-Clause and MIT licenses. Their notices and license texts
+ship with every archive and package (`THIRD_PARTY_NOTICES` and
+`licenses/`, or the Debian `copyright` file), as described in
+[Installation](#installation).
 
 ## Author
 
