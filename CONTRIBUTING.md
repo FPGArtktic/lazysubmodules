@@ -30,8 +30,10 @@ license, `GPL-3.0-only` (see [LICENSE](LICENSE)), and you certify the
 
 - Linux on x86_64 (`amd64`) for the container targets; the build image
   exists for x86_64 only (see [Build image](#build-image)).
-- Git and Bash.
-- Podman (preferred, rootless works) or Docker.
+- Git, Bash, `tar` and GNU coreutils.
+- Podman (preferred, rootless works) or Docker with BuildKit, its default
+  builder (the script sets `DOCKER_BUILDKIT=1`; the `Containerfile` uses
+  `RUN --mount`, which the legacy builder lacks).
 - Optional, for quick local loops: Go 1.27.1 or later.
 - Optional, for the commit-msg hook: `gitlint` 0.19.1 (see
   [Checking commit messages locally](#checking-commit-messages-locally)).
@@ -62,17 +64,19 @@ Targets run in the given order and the script stops at the first failure:
 | `snapshot` | `goreleaser release --snapshot --clean`, unsigned, output in `dist/` |
 | `release` | `goreleaser release --clean` (CI only: needs network and credentials) |
 | `test-compat` | `go test -race ./...` with Git 2.39.5, the oldest supported Git |
-| `package-test` | Install the `dist/` `.deb` in Debian and the `.rpm` in Fedora, then run `lazysubmodules version` and `lsm version` |
-| `image` | Build the build image from `Containerfile` |
+| `package-test` | Install the `dist/` `.deb` in Debian and the `.rpm` in Fedora, for the host architecture, then run `lazysubmodules version` and `lsm version` |
+| `image` | Build the build image from `Containerfile`, unless it exists |
 | `image-tag` | Print the build image reference |
 | `image-save` | Save the build image to the archive `IMAGE_ARCHIVE` |
-| `image-load` | Load the build image from the archive `IMAGE_ARCHIVE` |
+| `image-load` | Check that the archive `IMAGE_ARCHIVE` holds the build image, then load it |
 
 The targets from `build` to `release` run in the build image. `test-compat`
 uses the official `golang:1.27.1-bookworm` image (Debian bookworm ships Git
 2.39.5), and `package-test` uses `debian:trixie-slim` and `fedora:44`; all
 three are pinned by digest in the script. `package-test` needs the packages
-of a previous `snapshot`, and it fails when `dist/` has none.
+of a previous `snapshot`, and it fails when `dist/` has none. It installs
+only the packages for the host architecture, so CI tests the `amd64`
+packages; the `arm64` ones are built but not installed.
 
 Before you propose a commit, run at least:
 
@@ -97,14 +101,30 @@ How the script behaves:
   AUR publishing) read the home directory from that entry, so they never
   write into the checkout. Podman gets the entry with `--passwd-entry`;
   rootful Docker gets a copy of the image's passwd file with the entry added.
-- **Image:** every target that runs in the build image builds it first when
-  it is missing. The image tag is derived from the `Containerfile` hash, so
-  an edited `Containerfile` is rebuilt automatically, and
-  `image-tag` prints the reference (CI uses it as the cache key).
-- **Offline:** all targets except `release`, `package-test` and `image` run
-  without network access. Dependencies come from the committed `vendor/`
-  directory (`GOFLAGS=-mod=vendor`), and `GOTOOLCHAIN=local` prevents Go
-  toolchain downloads.
+- **Image:** every target that runs in the build image, and `image` itself,
+  builds it only when it is missing. The image tag is derived from the
+  `Containerfile` hash, so an edited `Containerfile` is rebuilt
+  automatically, and `image-tag` prints the reference (CI uses it as the
+  cache key). An existing image is never rebuilt: an image restored with
+  `image-load` has no build cache, so a rebuild would start from scratch. To
+  rebuild an unchanged `Containerfile` anyway, remove the image first:
+
+  ```sh
+  podman rmi "$(scripts/build-in-container.sh image-tag)"
+  ```
+
+- **Image archive:** `image-save` and `image-load` need `IMAGE_ARCHIVE`; a
+  relative path is relative to the current directory. Both check it before
+  any target runs.
+- **Offline:** the containers of all targets except `release` and
+  `package-test` run with `--network=none`. Dependencies come from the
+  committed `vendor/` directory (`GOFLAGS=-mod=vendor`), and
+  `GOTOOLCHAIN=local` prevents Go toolchain downloads.
+- **Images need the network when missing:** building the build image
+  (`image`, or any target that runs in it while the image is missing)
+  downloads the toolchain, and `test-compat` and `package-test` pull their
+  images. On a machine without network access, load the build image with
+  `image-load` and pull the `golang` image of `test-compat` beforehand.
 - **Network for `package-test`:** `apt` and `dnf` download the `git`
   dependency of the packages from the distribution mirrors.
 - **cgo:** builds use `CGO_ENABLED=0`. The race detector needs cgo, so `test`
@@ -113,6 +133,21 @@ How the script behaves:
   cache volumes are shared by every run and use the shared label `:z`
   instead, because a private label would be applied again, recursively, on
   each run.
+- **Init process:** the build image runs every command under `catatonit`,
+  which reaps orphaned processes. Without it the command itself is PID 1,
+  and the zombies of detached git processes (such as automatic
+  maintenance) pile up until the container's process limit is reached.
+- **Worktrees:** in a linked worktree (`git worktree add`), `.git` is a
+  file that points to a git directory outside the checkout. The script
+  mounts that directory and the repository's common git directory, with the
+  shared label `:z`, at the paths the pointers lead to inside the container,
+  so `lint`, `gitlint`, `snapshot` and `release` work there too. Those four
+  targets refuse to run where git cannot work in the container: in a
+  submodule checkout, whose git directory names the work tree relative to
+  the host layout (`core.worktree`), and when a pointer leads into `/src`,
+  where the checkout is mounted (for example a worktree with relative paths
+  next to a repository named `src`). `build`, `test` and the other targets
+  still work there.
 - **Release:** `release` passes `GITHUB_TOKEN`,
   `ACTIONS_ID_TOKEN_REQUEST_URL`, `ACTIONS_ID_TOKEN_REQUEST_TOKEN`, `AUR_KEY`
   and `GITHUB_STEP_SUMMARY` into the container when they are set. GoReleaser
@@ -189,9 +224,10 @@ release binaries and packages are still built for `amd64` and `arm64`.
 ### Updating the pins
 
 `scripts/update-builder-pins.sh` resolves the newest dated
-`archlinux:base-devel` tag and its digest, the matching archive date and the
-newest commits of the AUR packages, checks them, and rewrites the pins in
-the `Containerfile`. It changes nothing when the pins are current.
+`archlinux:base-devel` tag and its digest, the matching archive date, the
+newest commits of the AUR packages and the newest go-licenses release,
+checks them, and rewrites the pins in the `Containerfile`. It changes
+nothing when the pins are current.
 
 ```sh
 scripts/update-builder-pins.sh --dry-run   # show what would change
@@ -543,11 +579,21 @@ package. A new dependency needs a good reason and a compatible license.
 - Third-party GitHub Actions are pinned by commit SHA.
 - Releases are cut by maintainers with a signed SemVer tag, for example
   `git tag -s v1.2.3`; pre-releases use `vX.Y.Z-rc.N`. Pushing the tag
-  runs `.github/workflows/release.yml`, which restores or builds the image
-  and runs `test` and `release`.
+  runs `.github/workflows/release.yml`, which checks the tag signature,
+  restores or builds the image and runs `test` and `release`.
+- The tag check accepts only an annotated tag at the checked-out commit
+  with a good OpenPGP signature from one of the keys in the repository
+  variable `RELEASE_TAG_KEYS` (Settings, Secrets and variables, Actions,
+  Variables). Set it before the first release to the ASCII-armored public
+  keys of the maintainers, for example the output of
+  `gpg --armor --export <key-id>`; without it, every release fails. The
+  keys live in a variable rather than in the repository because whoever
+  pushes a tag controls the files of the tagged commit, while variables
+  can only be changed in the repository settings.
 - GoReleaser injects the version, commit and build date with `-ldflags`, and
   signs `checksums.txt` with cosign keyless signing.
-- The AUR package `lazysubmodules-git` builds from this repository; its
-  recipe lives in the AUR. GoReleaser also generates a `lazysubmodules-bin`
-  recipe, but publishes it only when the `AUR_KEY` secret is set, which the
-  project does not do.
+- No AUR package is published yet. The planned `lazysubmodules-git`
+  package would build from this repository; register it in the AUR before
+  the README links to it again. GoReleaser also generates a
+  `lazysubmodules-bin` recipe, but publishes it only when the `AUR_KEY`
+  secret is set, which the project does not do.

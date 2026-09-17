@@ -5,7 +5,6 @@
 
 [![CI](https://github.com/FPGArtktic/lazysubmodules/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/FPGArtktic/lazysubmodules/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/FPGArtktic/lazysubmodules?include_prereleases&sort=semver)](https://github.com/FPGArtktic/lazysubmodules/releases)
-[![AUR](https://img.shields.io/aur/version/lazysubmodules-git?label=AUR%20lazysubmodules-git)](https://aur.archlinux.org/packages/lazysubmodules-git)
 [![Go version](https://img.shields.io/github/go-mod/go-version/FPGArtktic/lazysubmodules)](go.mod)
 [![Go Reference](https://pkg.go.dev/badge/github.com/FPGArtktic/lazysubmodules.svg)](https://pkg.go.dev/github.com/FPGArtktic/lazysubmodules)
 [![Linted by golangci-lint](https://img.shields.io/badge/linted%20by-golangci--lint-00ADD8?logo=go&logoColor=white)](.golangci.yml)
@@ -245,27 +244,15 @@ sudo dnf install "./lazysubmodules_${VERSION}_linux_${ARCH}.rpm"
 
 The packages are not signed themselves; check them against the signed
 `checksums.txt` first (see [Verifying releases](#verifying-releases)).
-CI installs the packages built from every change in Debian and Fedora and
-runs them.
+CI installs the `amd64` packages built from every change in Debian and
+Fedora and runs them.
 
 ### Arch Linux (AUR)
 
-The AUR package `lazysubmodules-git` builds the latest `main` branch from
-source. Install it with your AUR helper, for example:
-
-```sh
-yay -S lazysubmodules-git
-```
-
-or without a helper:
-
-```sh
-git clone https://aur.archlinux.org/lazysubmodules-git.git
-cd lazysubmodules-git
-makepkg -si
-```
-
-The package also provides `lsm` as a symlink to `lazysubmodules`.
+An AUR package, `lazysubmodules-git`, is planned but not published yet.
+Until this section links to it, a package of that name in the AUR does not
+come from this project. Meanwhile, use a
+[release archive](#release-archives) or [Go](#go).
 
 ### Go
 
@@ -751,8 +738,10 @@ sha256sum --ignore-missing -c checksums.txt
   transparency log, so it needs network access.
 - **Deprecation warnings:** recent cosign versions warn that `--certificate`
   and `--signature` are deprecated. The flags still work.
-- **Release tags** are signed as well (`git tag -s`). Check one with
-  `git tag -v v<version>`, given the maintainer's public key.
+- **Release tags** are signed as well (`git tag -s`), and the release
+  workflow publishes nothing for a tag without a good signature from a
+  maintainer key. Check a tag with `git tag -v v<version>`, given the
+  maintainer's public key.
 
 ## Building from source
 
