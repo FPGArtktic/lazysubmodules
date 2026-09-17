@@ -91,6 +91,115 @@ func TestIsDirtyNestedSubmodule(t *testing.T) {
 	check("deleted nested submodule", true)
 }
 
+// nestedFixture is a superproject with the submodule outer, whose HEAD
+// records the newer of two commits of its own submodule inner.
+type nestedFixture struct {
+	super              *gittest.Super
+	inner              *gittest.Upstream
+	outerDir, innerDir string
+	older, newer       string
+}
+
+// newNestedFixture creates a nestedFixture with outer and inner checked out.
+func newNestedFixture(t *testing.T) *nestedFixture {
+	t.Helper()
+	inner := gittest.NewUpstream(t, gittest.SHA1)
+	outer := gittest.NewUpstream(t, gittest.SHA1)
+	outer.AddSubmodule(t, "inner", inner)
+	older := gittest.Git(t, filepath.Join(outer.Work, "inner"), "rev-parse", "HEAD")
+	newer := inner.Commit(t, "newer inner")
+	gittest.Git(t, filepath.Join(outer.Work, "inner"), "pull", "--quiet", "origin", "main")
+	outer.Commit(t, "bump inner")
+	super := gittest.NewSuper(t, gittest.SHA1)
+	outerDir := filepath.Join(super.Dir, super.AddSubmodule(t, "outer", outer))
+	gittest.Git(t, outerDir, "submodule", "update", "--init", "--quiet")
+	return &nestedFixture{super: super, inner: inner, outerDir: outerDir,
+		innerDir: filepath.Join(outerDir, "inner"), older: older, newer: newer}
+}
+
+func TestCheckoutLeavesNestedSubmodules(t *testing.T) {
+	t.Parallel()
+	for _, config := range []string{"submodule.recurse=true", "submodule.recurse=false"} {
+		t.Run(config, func(t *testing.T) {
+			t.Parallel()
+			f := newNestedFixture(t)
+			r := gittest.Runner(t, config)
+			ctx := t.Context()
+			// The nested submodule at its recorded commit stays there.
+			if err := r.Checkout(ctx, f.outerDir, "HEAD~1", git.Offline); err != nil {
+				t.Fatal(err)
+			}
+			if got := gittest.Git(t, f.innerDir, "rev-parse", "HEAD"); got != f.newer {
+				t.Errorf("nested HEAD after checkout = %s, want %s", got, f.newer)
+			}
+			// At a commit that neither side records, it does not stop the
+			// checkout either.
+			gittest.WriteFile(t, filepath.Join(f.innerDir, gittest.TrackedFile), "local\n")
+			gittest.Git(t, f.innerDir, "commit", "--quiet", "-am", "local change")
+			local := gittest.Git(t, f.innerDir, "rev-parse", "HEAD")
+			if err := r.Checkout(ctx, f.outerDir, "main", git.Offline); err != nil {
+				t.Fatal(err)
+			}
+			if got := gittest.Git(t, f.innerDir, "rev-parse", "HEAD"); got != local {
+				t.Errorf("nested HEAD after second checkout = %s, want %s", got, local)
+			}
+		})
+	}
+	// Plain git would move the nested submodule with the setting.
+	f := newNestedFixture(t)
+	gittest.Git(t, f.outerDir, "-c", "submodule.recurse=true", "checkout", "--quiet",
+		"--detach", "HEAD~1")
+	if got := gittest.Git(t, f.innerDir, "rev-parse", "HEAD"); got != f.older {
+		t.Errorf("git checkout with submodule.recurse left inner at %s", got)
+	}
+}
+
+func TestSubmoduleInitLeavesNestedSubmodules(t *testing.T) {
+	t.Parallel()
+	f := newNestedFixture(t)
+	// The repository of inner stays in the one of outer.
+	f.super.Deinit(t, "outer")
+	r := gittest.Runner(t, "submodule.recurse=true")
+	if err := r.SubmoduleInit(t.Context(), f.super.Dir, "outer", git.Offline, nil); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(f.innerDir)
+	if err != nil || len(entries) != 0 {
+		t.Errorf("nested submodule after the initialization: %v, %v", entries, err)
+	}
+	if head, err := r.Head(t.Context(), f.outerDir); err != nil || head == "" {
+		t.Errorf("outer not initialized: %q, %v", head, err)
+	}
+}
+
+func TestFetchLeavesNestedSubmodules(t *testing.T) {
+	t.Parallel()
+	for _, config := range []string{"submodule.recurse=true", "fetch.recurseSubmodules=true"} {
+		t.Run(config, func(t *testing.T) {
+			t.Parallel()
+			f := newNestedFixture(t)
+			// The outer upstream records a commit that inner has not
+			// fetched yet.
+			outerUp := gittest.Git(t, f.outerDir, "remote", "get-url", "origin")
+			work := t.TempDir()
+			gittest.Git(t, work, "clone", "--quiet", "--recurse-submodules", outerUp, "outer")
+			newest := f.inner.Commit(t, "newest inner")
+			outerWork := filepath.Join(work, "outer")
+			gittest.Git(t, filepath.Join(outerWork, "inner"), "pull", "--quiet", "origin", "main")
+			gittest.Git(t, outerWork, "commit", "--quiet", "-am", "bump inner again")
+			gittest.Git(t, outerWork, "push", "--quiet", "origin", "HEAD:main")
+
+			r := gittest.Runner(t, config)
+			if err := r.Fetch(t.Context(), f.outerDir, "origin", nil); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := r.ResolveCommit(t.Context(), f.innerDir, newest); err == nil {
+				t.Errorf("the fetch of outer fetched %s into inner", newest)
+			}
+		})
+	}
+}
+
 func TestIsDirtyIgnoresSubmoduleConfig(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, gittest.SHA1)

@@ -241,7 +241,8 @@ func realPath(p string) (string, error) {
 
 // Checkout detaches HEAD at a commit and updates the working tree.
 //
-// In a partial clone, the objects of the commit may be missing; Online
+// Nested submodules are left alone, whatever submodule.recurse says. In a
+// partial clone, the objects of the commit may be missing; Online
 // fetches them from the promisor remote, Offline fails instead. Git 2.39
 // does not accept "--end-of-options" here, so a commit that could be taken
 // for an option (such as "-f", which would discard local changes) is
@@ -259,7 +260,7 @@ func (r *Runner) Checkout(ctx context.Context, dir, commit string, network Netwo
 		Dir: dir,
 		Args: []string{
 			"-c", "advice.detachedHead=false",
-			"checkout", "--quiet", "--detach", commit, "--",
+			"checkout", "--quiet", "--no-recurse-submodules", "--detach", commit, "--",
 		},
 		Env: network.env(),
 	})

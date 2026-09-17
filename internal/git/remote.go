@@ -11,7 +11,9 @@ import (
 // Fetch downloads branches and tags from a remote.
 //
 // Tags moved on the remote replace the local ones ("--force") and branches
-// deleted on the remote are pruned. The invocation is Online.
+// deleted on the remote are pruned. Nested submodules are not fetched,
+// whatever fetch.recurseSubmodules and submodule.recurse say. The
+// invocation is Online.
 //
 // Context: dir must be inside a repository; credentials are handled by the
 // configured helpers.
@@ -19,8 +21,9 @@ import (
 // streamed to it and Error.Stderr is empty.
 func (r *Runner) Fetch(ctx context.Context, dir, remote string, progress io.Writer) error {
 	_, err := r.Exec(ctx, Cmd{
-		Dir:    dir,
-		Args:   []string{"fetch", "--tags", "--force", "--prune", "--end-of-options", remote},
+		Dir: dir,
+		Args: []string{"fetch", "--tags", "--force", "--prune", "--no-recurse-submodules",
+			"--end-of-options", remote},
 		Env:    Online.env(),
 		Stderr: progress,
 	})
@@ -34,7 +37,8 @@ func (r *Runner) Fetch(ctx context.Context, dir, remote string, progress io.Writ
 // objects are fetched. Offline, only the existing submodule repository in the
 // git directory of the superproject is used, and a missing repository,
 // commit or object of a partial clone is an error. The configured update
-// strategy (submodule.<name>.update) is overridden by a checkout.
+// strategy (submodule.<name>.update) is overridden by a checkout, and nested
+// submodules are left alone, whatever submodule.recurse says.
 //
 // Context: root is the top level of the superproject; p is relative to it.
 // Return: nil, or *Error. When progress is non-nil, the output of git is
@@ -42,9 +46,10 @@ func (r *Runner) Fetch(ctx context.Context, dir, remote string, progress io.Writ
 func (r *Runner) SubmoduleInit(ctx context.Context, root, p string, network Network,
 	progress io.Writer) error {
 	c := Cmd{
-		Dir:  root,
-		Args: []string{literalPathspecs, "submodule", "update", "--init", "--checkout"},
-		Env:  network.env(),
+		Dir: root,
+		Args: []string{literalPathspecs, "-c", "submodule.recurse=false",
+			"submodule", "update", "--init", "--checkout"},
+		Env: network.env(),
 	}
 	if network == Offline {
 		// "--no-fetch" does not prevent the initial clone; the missing
