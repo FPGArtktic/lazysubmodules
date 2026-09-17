@@ -22,7 +22,7 @@
 
 pkgname=lazysubmodules-git
 _pkgname=lazysubmodules
-pkgver=r54.3cf609f
+pkgver=0.1.0rc1.r0.gdd57e1b
 pkgrel=1
 pkgdesc='Track git submodules by branch, tag, tag pattern or commit'
 arch=('x86_64' 'aarch64')

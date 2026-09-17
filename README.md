@@ -356,20 +356,25 @@ Fedora, runs them and checks the installed license notices.
 
 ### Arch Linux (AUR)
 
-An AUR package, `lazysubmodules-git`, is planned but not published yet.
-Until this section links to it, a package of that name in the AUR does not
-come from this project.
-
-Its recipe is in this repository,
-[`packaging/aur/lazysubmodules-git/PKGBUILD`](packaging/aur/lazysubmodules-git/PKGBUILD),
-so you can already build and install the package locally with `makepkg`
-(from the `base-devel` group):
+The package is
+[`lazysubmodules-git`](https://aur.archlinux.org/packages/lazysubmodules-git).
+With an AUR helper:
 
 ```sh
-git clone https://github.com/FPGArtktic/lazysubmodules.git
-cd lazysubmodules/packaging/aur/lazysubmodules-git
+yay -S lazysubmodules-git     # or: paru -S lazysubmodules-git
+```
+
+Without one, or to read the recipe before you build it (`makepkg` comes
+with the `base-devel` group):
+
+```sh
+git clone https://aur.archlinux.org/lazysubmodules-git.git
+cd lazysubmodules-git
 makepkg -si
 ```
+
+The same recipe is in this repository, as
+[`packaging/aur/lazysubmodules-git/PKGBUILD`](packaging/aur/lazysubmodules-git/PKGBUILD).
 
 - **Source:** the recipe clones the default branch of the GitHub
   repository; it does not build your local checkout. It builds with the
@@ -390,8 +395,8 @@ makepkg -si
   `r54.3cf609f` before the first release. `lazysubmodules version` prints
   it, with the commit and the commit date.
 
-Meanwhile, you can also use a [release archive](#release-archives) or
-[Go](#go).
+A [release archive](#release-archives) works on Arch Linux as well, and
+needs no build.
 
 ### Go
 
