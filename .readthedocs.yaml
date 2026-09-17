@@ -12,15 +12,16 @@ build:
   os: ubuntu-24.04
   tools:
     python: "3.13"
+  # Every command runs in a new process that does not see the files an
+  # earlier command left in /tmp; only the checkout, the output directory and
+  # the installed packages persist.
   commands:
-    # Python-Markdown, pinned by version and hash.
+    # Python-Markdown, pinned by version and hash, read from standard input.
     - >-
       printf '%s\n'
       'markdown==3.10.3 --hash=sha256:fa6c92a00a4a3c98b22728c64a935ae1928250ae65058a6ded814d2cc29a4cea'
-      > /tmp/rtd-requirements.txt
-    - >-
-      python -m pip install --no-cache-dir --require-hashes --only-binary=:all:
-      -r /tmp/rtd-requirements.txt
+      | python -m pip install --no-cache-dir --require-hashes --only-binary=:all:
+      -r /dev/stdin
     - mkdir -p "$READTHEDOCS_OUTPUT/html"
     - cp -R docs "$READTHEDOCS_OUTPUT/html/docs"
     - |
