@@ -7,7 +7,7 @@
 # that script runs inside this image, so developer machines and CI share one
 # toolchain. Tools are downloaded only here, never while the project is built.
 #
-# Reproducibility comes from three pins, all kept current by
+# Reproducibility comes from four pins, all kept current by
 # scripts/update-builder-pins.sh:
 #
 #   * the dated archlinux:base-devel tag, pinned by digest;
@@ -15,7 +15,11 @@
 #     upgrades every package from that immutable snapshot, never from a
 #     live mirror;
 #   * the commits of the AUR packages (goreleaser-bin, gitlint), fetched by
-#     commit ID from the official GitHub mirror of the AUR.
+#     commit ID from the official GitHub mirror of the AUR;
+#   * the go-licenses release, verified against the Go checksum database.
+#
+# Building needs BuildKit or podman/buildah: the final stage uses
+# "RUN --mount", which the legacy docker builder does not support.
 #
 # The official Arch Linux image exists for x86_64 (linux/amd64) only, so this
 # image does too.
@@ -39,8 +43,9 @@ ARG ARCH_ARCHIVE_DATE=2026/09/13
 # ---------------------------------------------------------------------------
 FROM docker.io/library/archlinux:${ARCH_IMAGE_TAG}@${ARCH_IMAGE_DIGEST} AS base
 
-# TARGETARCH is set by podman/buildah and BuildKit. The legacy docker builder
-# leaves it empty; the architecture of the build container is used then.
+# TARGETARCH is set by podman/buildah and BuildKit, the builders this file
+# needs. The fallback to the architecture of the build container only covers
+# a builder that leaves it unset.
 ARG TARGETARCH
 ARG ARCH_ARCHIVE_DATE
 
