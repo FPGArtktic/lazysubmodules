@@ -21,7 +21,7 @@ const refCheckDir = "/"
 // Return: the absolute path printed by "git rev-parse --show-toplevel", or
 // *Error.
 func (r *Runner) TopLevel(ctx context.Context, dir string) (string, error) {
-	out, err := r.Run(ctx, dir, "rev-parse", "--show-toplevel")
+	out, err := r.runOffline(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", err
 	}
@@ -37,7 +37,7 @@ func (r *Runner) TopLevel(ctx context.Context, dir string) (string, error) {
 // Context: dir must be inside a repository.
 // Return: the absolute path (which may not exist), or an error.
 func (r *Runner) GitPath(ctx context.Context, dir, p string) (string, error) {
-	out, err := r.Run(ctx, dir, "rev-parse", "--git-path", p)
+	out, err := r.runOffline(ctx, dir, "rev-parse", "--git-path", p)
 	if err != nil {
 		return "", err
 	}
@@ -77,7 +77,7 @@ func (r *Runner) SubmoduleGitDir(ctx context.Context, root, name string) (string
 // the repository at dir, where git looks for repository extensions. A
 // missing variable is false.
 func (r *Runner) localConfigBool(ctx context.Context, dir, key string) (bool, error) {
-	out, err := r.Run(ctx, dir, "config", "--local", "--bool", "--get", key)
+	out, err := r.runOffline(ctx, dir, "config", "--local", "--bool", "--get", key)
 	if exitCode(err) == 1 {
 		return false, nil
 	}
@@ -91,7 +91,7 @@ func (r *Runner) localConfigBool(ctx context.Context, dir, key string) (bool, er
 // of the repository at dir, as git does. Found is false when the variable is
 // not set.
 func (r *Runner) configGet(ctx context.Context, dir, key string) (string, bool, error) {
-	out, err := r.Run(ctx, dir, "config", "--get", key)
+	out, err := r.runOffline(ctx, dir, "config", "--get", key)
 	if exitCode(err) == 1 {
 		return "", false, nil
 	}
@@ -118,7 +118,7 @@ func absPath(dir, p string) (string, error) {
 // Context: dir must be inside a repository.
 // Return: "sha1" or "sha256", or *Error.
 func (r *Runner) ObjectFormat(ctx context.Context, dir string) (string, error) {
-	out, err := r.Run(ctx, dir, "rev-parse", "--show-object-format")
+	out, err := r.runOffline(ctx, dir, "rev-parse", "--show-object-format")
 	if err != nil {
 		return "", err
 	}
@@ -149,7 +149,7 @@ func (r *Runner) Head(ctx context.Context, dir string) (string, error) {
 // verifyRev resolves spec with "rev-parse --verify"; name is used in the
 // not-found error.
 func (r *Runner) verifyRev(ctx context.Context, dir, name, spec string) (string, error) {
-	out, err := r.Run(ctx, dir, "rev-parse", "--verify", "--quiet", spec)
+	out, err := r.runOffline(ctx, dir, "rev-parse", "--verify", "--quiet", spec)
 	if exitCode(err) == 1 {
 		return "", fmt.Errorf("%s: %w", name, ErrRefNotFound)
 	}
@@ -174,7 +174,7 @@ func (r *Runner) ListTags(ctx context.Context, dir, pattern string) ([]string, e
 	if pattern != "" {
 		args = append(args, "--end-of-options", pattern)
 	}
-	out, err := r.Run(ctx, dir, args...)
+	out, err := r.runOffline(ctx, dir, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +188,7 @@ func (r *Runner) ListTags(ctx context.Context, dir, pattern string) ([]string, e
 // without the symbolic HEAD, sorted by name, or *Error.
 func (r *Runner) ListRemoteBranches(ctx context.Context, dir, remote string) ([]string, error) {
 	prefix := "refs/remotes/" + remote + "/"
-	out, err := r.Run(ctx, dir, "for-each-ref", "--format=%(refname)", prefix)
+	out, err := r.runOffline(ctx, dir, "for-each-ref", "--format=%(refname)", prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +212,7 @@ func (r *Runner) ListRemoteBranches(ctx context.Context, dir, remote string) ([]
 // Return: nil, an error wrapping ErrInvalidRefName, or *Error when git could
 // not run.
 func (r *Runner) CheckBranchName(ctx context.Context, name string) error {
-	out, err := r.Run(ctx, refCheckDir, "check-ref-format", "--branch", name)
+	out, err := r.runOffline(ctx, refCheckDir, "check-ref-format", "--branch", name)
 	if exitCode(err) > 0 || (err == nil && trimNewline(out) != name) {
 		return fmt.Errorf("%w: %q", ErrInvalidRefName, name)
 	}
@@ -225,7 +225,7 @@ func (r *Runner) CheckBranchName(ctx context.Context, name string) error {
 // Return: nil, an error wrapping ErrInvalidRefName, or *Error when git could
 // not run.
 func (r *Runner) CheckTagName(ctx context.Context, name string) error {
-	_, err := r.Run(ctx, refCheckDir, "check-ref-format", "refs/tags/"+name)
+	_, err := r.runOffline(ctx, refCheckDir, "check-ref-format", "refs/tags/"+name)
 	if exitCode(err) > 0 {
 		return fmt.Errorf("%w: %q", ErrInvalidRefName, name)
 	}

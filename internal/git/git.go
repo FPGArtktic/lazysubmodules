@@ -10,11 +10,19 @@
 // as a slice.
 //
 // Every invocation runs with LC_ALL=C, so that output parsing does not
-// depend on the locale, and with GIT_OPTIONAL_LOCKS=0. Repository-local
-// variables such as GIT_DIR or GIT_INDEX_FILE are removed from the inherited
-// environment, so that a surrounding git hook cannot redirect a command to
-// another repository. Configuration passed through GIT_CONFIG_PARAMETERS and
-// GIT_CONFIG_COUNT is kept.
+// depend on the locale, with GIT_OPTIONAL_LOCKS=0, and with
+// GIT_NO_LAZY_FETCH=1, so that a partial clone does not fetch missing objects
+// on demand. Repository-local variables such as GIT_DIR or GIT_INDEX_FILE are
+// removed from the inherited environment, so that a surrounding git hook
+// cannot redirect a command to another repository. Configuration passed
+// through GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT is kept.
+//
+// Only Fetch, SubmoduleAdd, and Checkout and SubmoduleInit with Online use
+// the network. Every other helper except Commit also runs with an empty
+// GIT_ALLOW_PROTOCOL, which permits no transport at all and so covers git
+// releases that ignore GIT_NO_LAZY_FETCH. Commit keeps the configured
+// transports, since the hooks it runs may use them; it only disables lazy
+// fetching. Hooks see the environment of the command that runs them.
 //
 // Only features available in git 2.39 are used. Callers must validate
 // user-controlled values (refs, patterns, paths) before passing them: empty
@@ -114,15 +122,19 @@ func IsLocalEnvVar(name string) bool {
 // variables forced by the package, followed by the forced variables and
 // extra.
 func buildEnv(base, extra []string) []string {
-	env := make([]string, 0, len(base)+2+len(extra))
+	forced := []string{"LC_ALL=C", "GIT_OPTIONAL_LOCKS=0", noLazyFetch}
+	env := make([]string, 0, len(base)+len(forced)+len(extra))
 	for _, kv := range base {
 		name, _, _ := strings.Cut(kv, "=")
-		if IsLocalEnvVar(name) || name == "LC_ALL" || name == "GIT_OPTIONAL_LOCKS" {
+		switch name {
+		case "LC_ALL", "GIT_OPTIONAL_LOCKS", "GIT_NO_LAZY_FETCH":
 			continue
 		}
-		env = append(env, kv)
+		if !IsLocalEnvVar(name) {
+			env = append(env, kv)
+		}
 	}
-	env = append(env, "LC_ALL=C", "GIT_OPTIONAL_LOCKS=0")
+	env = append(env, forced...)
 	return append(env, extra...)
 }
 
@@ -145,9 +157,11 @@ type Cmd struct {
 
 // Exec runs git as described by c.
 //
-// When the context ends, git and every process it started receive SIGTERM,
-// so that they can remove their lock files, and git is killed if it does not
-// exit in time.
+// Lazy fetching is disabled unless c.Env enables it; other transports are
+// available as the configuration and the environment permit. When the
+// context ends, git and every process it started receive SIGTERM, so that
+// they can remove their lock files, and git is killed if it does not exit in
+// time.
 //
 // Context: any; the invocation is bound to ctx.
 // Return: the captured standard output (empty when c.Stdout is set, and
@@ -183,6 +197,8 @@ func (r *Runner) Exec(ctx context.Context, c Cmd) (string, error) {
 }
 
 // Run runs git with args in dir and captures its output.
+//
+// The environment is the one of Exec with an empty Cmd.Env.
 //
 // Context: any; the invocation is bound to ctx.
 // Return: the raw standard output, and *Error on failure.

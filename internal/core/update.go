@@ -595,7 +595,7 @@ func (u *updater) checkout(ctx context.Context, undo *applyUndo) error {
 		if s.head == s.change.New.Commit {
 			continue
 		}
-		if err := u.repo.git.Checkout(ctx, s.loc.worktree, s.change.New.Commit); err != nil {
+		if err := u.repo.git.Checkout(ctx, s.loc.worktree, s.change.New.Commit, git.Online); err != nil {
 			return wrapName(s.change.Submodule.Name, err)
 		}
 		undo.moved = append(undo.moved, s)
@@ -689,7 +689,7 @@ func (u *updater) restore(ctx context.Context, moved []*step) error {
 		if s.head == "" {
 			continue
 		}
-		if err := u.repo.git.Checkout(ctx, s.loc.worktree, s.head); err != nil {
+		if err := u.repo.git.Checkout(ctx, s.loc.worktree, s.head, git.Online); err != nil {
 			errs = append(errs, wrapName(s.change.Submodule.Name,
 				fmt.Errorf("restore %s: %w", abbrev(s.head), err)))
 		}

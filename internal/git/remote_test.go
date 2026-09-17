@@ -114,7 +114,7 @@ func TestSubmoduleInitOffline(t *testing.T) {
 			if err := os.Rename(f.up.Bare, f.up.Bare+".gone"); err != nil {
 				t.Fatal(err)
 			}
-			if err := r.SubmoduleInit(ctx, f.super.Dir, f.path, true, nil); err != nil {
+			if err := r.SubmoduleInit(ctx, f.super.Dir, f.path, git.Offline, nil); err != nil {
 				t.Fatal(err)
 			}
 			root, err := r.IsWorktreeRoot(ctx, f.sub)
@@ -138,10 +138,10 @@ func TestSubmoduleInitOfflineDoesNotClone(t *testing.T) {
 	// protocol.file.allow=always would allow cloning the local upstream.
 	clone := filepath.Join(t.TempDir(), "clone")
 	gittest.Git(t, f.super.Dir, "clone", "--quiet", "--", f.super.Dir, clone)
-	err := r.SubmoduleInit(ctx, clone, f.path, true, nil)
+	err := r.SubmoduleInit(ctx, clone, f.path, git.Offline, nil)
 	gitErr, ok := errors.AsType[*git.Error](err)
 	if !ok || !strings.Contains(gitErr.Stderr, "not allowed") {
-		t.Errorf("SubmoduleInit(no fetch) = %v, want *git.Error refusing the transport", err)
+		t.Errorf("SubmoduleInit(Offline) = %v, want *git.Error refusing the transport", err)
 	}
 	modules, err := r.SubmoduleGitDir(ctx, clone, "lib")
 	if err != nil || exists(t, modules) {
@@ -160,7 +160,7 @@ func TestSubmoduleInitIgnoresUpdateNone(t *testing.T) {
 	f.super.SetKey(t, "lib", "update", "none")
 	f.super.Commit(t, "do not update lib")
 	f.super.Deinit(t, f.path)
-	if err := r.SubmoduleInit(ctx, f.super.Dir, f.path, true, nil); err != nil {
+	if err := r.SubmoduleInit(ctx, f.super.Dir, f.path, git.Offline, nil); err != nil {
 		t.Fatal(err)
 	}
 	if root, err := r.IsWorktreeRoot(ctx, f.sub); err != nil || !root {
@@ -215,7 +215,7 @@ func TestSubmoduleInitCancelStopsClone(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- r.SubmoduleInit(ctx, clone, f.path, false, nil)
+		done <- r.SubmoduleInit(ctx, clone, f.path, git.Online, nil)
 	}()
 	waitForFile(t, pidFile)
 	data, err := os.ReadFile(pidFile)
@@ -259,13 +259,13 @@ func TestSubmoduleInitMissingCommitOffline(t *testing.T) {
 	gittest.Git(t, f.super.Dir, "commit", "--quiet", "-m", "bump lib")
 	f.super.Deinit(t, f.path)
 
-	err := r.SubmoduleInit(ctx, f.super.Dir, f.path, true, nil)
+	err := r.SubmoduleInit(ctx, f.super.Dir, f.path, git.Offline, nil)
 	if _, ok := errors.AsType[*git.Error](err); !ok {
-		t.Fatalf("SubmoduleInit(no fetch) = %v, want *git.Error", err)
+		t.Fatalf("SubmoduleInit(Offline) = %v, want *git.Error", err)
 	}
 	var progress bytes.Buffer
-	if err := r.SubmoduleInit(ctx, f.super.Dir, f.path, false, &progress); err != nil {
-		t.Fatalf("SubmoduleInit(fetch) = %v\n%s", err, progress.String())
+	if err := r.SubmoduleInit(ctx, f.super.Dir, f.path, git.Online, &progress); err != nil {
+		t.Fatalf("SubmoduleInit(Online) = %v\n%s", err, progress.String())
 	}
 	if head, err := r.Head(ctx, f.sub); err != nil || head != newCommit {
 		t.Errorf("Head = %q, %v; want %q", head, err, newCommit)
@@ -291,7 +291,7 @@ func TestSubmoduleInitClones(t *testing.T) {
 	if err != nil || exists(t, modules) {
 		t.Fatalf("module directory %q exists before init (%v)", modules, err)
 	}
-	if err := r.SubmoduleInit(ctx, clone, f.path, false, nil); err != nil {
+	if err := r.SubmoduleInit(ctx, clone, f.path, git.Online, nil); err != nil {
 		t.Fatal(err)
 	}
 	if head, err := r.Head(ctx, sub); err != nil || head != f.commits[gittest.TagV200RC] {
@@ -406,7 +406,7 @@ func TestNestedSubmodule(t *testing.T) {
 	if root, err := r.IsWorktreeRoot(ctx, innerDir); err != nil || root {
 		t.Errorf("nested submodule populated without recursion: %v, %v", root, err)
 	}
-	if err := r.SubmoduleInit(ctx, outerDir, "inner", false, nil); err != nil {
+	if err := r.SubmoduleInit(ctx, outerDir, "inner", git.Online, nil); err != nil {
 		t.Fatal(err)
 	}
 	if root, err := r.IsWorktreeRoot(ctx, innerDir); err != nil || !root {

@@ -43,6 +43,8 @@ func TestBuildEnvScrubsRepositoryVariables(t *testing.T) {
 		"LC_ALL=de_DE.UTF-8",
 		"LANG=de_DE.UTF-8",
 		"GIT_OPTIONAL_LOCKS=1",
+		"GIT_NO_LAZY_FETCH=0",
+		"GIT_ALLOW_PROTOCOL=https",
 		"GIT_DIR_NOT_LOCAL=kept",
 	}
 	got := buildEnv(base, []string{"HOME=/h", "LC_ALL=POSIX"})
@@ -54,9 +56,11 @@ func TestBuildEnvScrubsRepositoryVariables(t *testing.T) {
 		"GIT_CONFIG_VALUE_0=2",
 		"GIT_TERMINAL_PROMPT=0",
 		"LANG=de_DE.UTF-8",
+		"GIT_ALLOW_PROTOCOL=https",
 		"GIT_DIR_NOT_LOCAL=kept",
 		"LC_ALL=C",
 		"GIT_OPTIONAL_LOCKS=0",
+		"GIT_NO_LAZY_FETCH=1",
 		"HOME=/h",
 		"LC_ALL=POSIX",
 	}
@@ -68,9 +72,22 @@ func TestBuildEnvScrubsRepositoryVariables(t *testing.T) {
 func TestBuildEnvEmpty(t *testing.T) {
 	t.Parallel()
 	got := buildEnv(nil, nil)
-	want := []string{"LC_ALL=C", "GIT_OPTIONAL_LOCKS=0"}
+	want := []string{"LC_ALL=C", "GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1"}
 	if !slices.Equal(got, want) {
 		t.Errorf("buildEnv(nil, nil) = %q, want %q", got, want)
+	}
+}
+
+func TestNetworkEnv(t *testing.T) {
+	t.Parallel()
+	tests := map[Network][]string{
+		Offline: {"GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL="},
+		Online:  {"GIT_NO_LAZY_FETCH=0"},
+	}
+	for network, want := range tests {
+		if got := network.env(); !slices.Equal(got, want) {
+			t.Errorf("Network(%t).env() = %q, want %q", network, got, want)
+		}
 	}
 }
 
@@ -97,10 +114,9 @@ func TestNewRunnerOptions(t *testing.T) {
 	if r.Bin() != "/opt/git" {
 		t.Errorf("Bin() = %q", r.Bin())
 	}
-	n := len(r.env)
-	wantTail := []string{"LC_ALL=C", "GIT_OPTIONAL_LOCKS=0", "A=1", "B=2"}
-	if n < 4 || !slices.Equal(r.env[n-4:], wantTail) {
-		t.Errorf("env tail = %q, want %q", r.env[max(0, n-4):], wantTail)
+	wantTail := []string{"LC_ALL=C", "GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "A=1", "B=2"}
+	if n, m := len(r.env), len(wantTail); n < m || !slices.Equal(r.env[n-m:], wantTail) {
+		t.Errorf("env tail = %q, want %q", r.env[max(0, n-m):], wantTail)
 	}
 }
 

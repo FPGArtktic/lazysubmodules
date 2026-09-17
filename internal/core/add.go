@@ -175,7 +175,7 @@ func (r *Repo) add(ctx context.Context, opts AddOptions, undo *addUndo) (Change,
 	if err := manifest.SetTracking(ctx, r.git, r.root, sub.Name, sub.Mode, sub.Ref); err != nil {
 		return Change{}, err
 	}
-	if err := r.git.Checkout(ctx, dir, res.Commit); err != nil {
+	if err := r.git.Checkout(ctx, dir, res.Commit, git.Online); err != nil {
 		return Change{}, err
 	}
 	change := Change{Submodule: sub, Old: undo.oldEntry, New: res, Init: true, Clone: true}

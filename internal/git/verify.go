@@ -19,7 +19,7 @@ import (
 // *Error when the tag is missing, unsigned or not trusted, or *Error when git
 // could not run.
 func (r *Runner) VerifyTag(ctx context.Context, dir, tag string) error {
-	_, err := r.Run(ctx, dir, "verify-tag", "--end-of-options", "refs/tags/"+tag)
+	_, err := r.runOffline(ctx, dir, "verify-tag", "--end-of-options", "refs/tags/"+tag)
 	return signatureError("tag "+tag, err)
 }
 
@@ -30,7 +30,7 @@ func (r *Runner) VerifyTag(ctx context.Context, dir, tag string) error {
 // *Error when the commit is missing, unsigned or not trusted, or *Error when
 // git could not run.
 func (r *Runner) VerifyCommit(ctx context.Context, dir, commit string) error {
-	_, err := r.Run(ctx, dir, "verify-commit", "--end-of-options", commit)
+	_, err := r.runOffline(ctx, dir, "verify-commit", "--end-of-options", commit)
 	return signatureError("commit "+commit, err)
 }
 

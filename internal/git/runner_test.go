@@ -43,6 +43,8 @@ func TestRunEnvironment(t *testing.T) {
 	for _, want := range []string{
 		"LC_ALL=C",
 		"GIT_OPTIONAL_LOCKS=0",
+		"GIT_NO_LAZY_FETCH=1",
+		"GIT_ALLOW_PROTOCOL=file", // set by the tests; Run keeps the transports
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_AUTHOR_NAME=" + gittest.Name,
 	} {
@@ -310,7 +312,7 @@ func TestExecCancelWhileGitStartsProcesses(t *testing.T) {
 		done := make(chan error, 1)
 		var progress strings.Builder
 		go func() {
-			done <- r.SubmoduleInit(ctx, f.super.Dir, f.path, false, &progress)
+			done <- r.SubmoduleInit(ctx, f.super.Dir, f.path, git.Online, &progress)
 		}()
 		time.Sleep(time.Duration(2*delay) * time.Millisecond)
 		start := time.Now()

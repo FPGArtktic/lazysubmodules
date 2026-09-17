@@ -40,7 +40,7 @@ func (r *Runner) ConfigList(ctx context.Context, dir, file string) ([]ConfigEntr
 	if err != nil || !exists {
 		return nil, err
 	}
-	out, err := r.Run(ctx, dir, "config", "-f", file, "--null", "--list")
+	out, err := r.runOffline(ctx, dir, "config", "-f", file, "--null", "--list")
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +95,7 @@ func (r *Runner) ConfigSet(ctx context.Context, dir, file, key, value string) er
 	if _, err := configFileExists(dir, file); err != nil {
 		return err
 	}
-	_, err := r.Run(ctx, dir, "config", "-f", file, "--replace-all", key, value)
+	_, err := r.runOffline(ctx, dir, "config", "-f", file, "--replace-all", key, value)
 	return err
 }
 
@@ -109,7 +109,7 @@ func (r *Runner) ConfigUnset(ctx context.Context, dir, file, key string) error {
 	if err != nil || !exists {
 		return err
 	}
-	_, err = r.Run(ctx, dir, "config", "-f", file, "--unset-all", key)
+	_, err = r.runOffline(ctx, dir, "config", "-f", file, "--unset-all", key)
 	if exitCode(err) == configExitMissing {
 		return nil
 	}
@@ -131,7 +131,7 @@ func (r *Runner) ConfigRemoveSection(ctx context.Context, dir, file, section str
 	if err != nil || !exists {
 		return err
 	}
-	_, err = r.Run(ctx, dir, "config", "-f", file, "--remove-section", section)
+	_, err = r.runOffline(ctx, dir, "config", "-f", file, "--remove-section", section)
 	if err == nil {
 		return nil
 	}

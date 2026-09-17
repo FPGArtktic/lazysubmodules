@@ -11,8 +11,7 @@ import (
 // Fetch downloads branches and tags from a remote.
 //
 // Tags moved on the remote replace the local ones ("--force") and branches
-// deleted on the remote are pruned. This is the only helper, together with
-// SubmoduleAdd and SubmoduleInit without noFetch, that uses the network.
+// deleted on the remote are pruned. The invocation is Online.
 //
 // Context: dir must be inside a repository; credentials are handled by the
 // configured helpers.
@@ -22,6 +21,7 @@ func (r *Runner) Fetch(ctx context.Context, dir, remote string, progress io.Writ
 	_, err := r.Exec(ctx, Cmd{
 		Dir:    dir,
 		Args:   []string{"fetch", "--tags", "--force", "--prune", "--end-of-options", remote},
+		Env:    Online.env(),
 		Stderr: progress,
 	})
 	return err
@@ -30,26 +30,26 @@ func (r *Runner) Fetch(ctx context.Context, dir, remote string, progress io.Writ
 // SubmoduleInit registers and checks out a submodule at the commit recorded in
 // the superproject.
 //
-// Without noFetch, a missing submodule repository is cloned and missing
-// commits are fetched. With noFetch, git may not use any transport: only the
-// existing submodule repository in the git directory of the superproject is
-// used, and a missing repository or commit is an error. The configured update
+// Online, a missing submodule repository is cloned, and missing commits and
+// objects are fetched. Offline, only the existing submodule repository in the
+// git directory of the superproject is used, and a missing repository,
+// commit or object of a partial clone is an error. The configured update
 // strategy (submodule.<name>.update) is overridden by a checkout.
 //
 // Context: root is the top level of the superproject; p is relative to it.
 // Return: nil, or *Error. When progress is non-nil, the output of git is
 // streamed to it.
-func (r *Runner) SubmoduleInit(ctx context.Context, root, p string, noFetch bool,
+func (r *Runner) SubmoduleInit(ctx context.Context, root, p string, network Network,
 	progress io.Writer) error {
 	c := Cmd{
 		Dir:  root,
 		Args: []string{literalPathspecs, "submodule", "update", "--init", "--checkout"},
+		Env:  network.env(),
 	}
-	if noFetch {
-		// "--no-fetch" does not prevent the initial clone. An empty list of
-		// allowed protocols does, and it overrides protocol.<name>.allow.
+	if network == Offline {
+		// "--no-fetch" does not prevent the initial clone; the missing
+		// transports do.
 		c.Args = append(c.Args, "--no-fetch")
-		c.Env = []string{"GIT_ALLOW_PROTOCOL="}
 	}
 	c.Args = append(c.Args, "--", p)
 	return r.stream(ctx, c, progress)
@@ -58,7 +58,7 @@ func (r *Runner) SubmoduleInit(ctx context.Context, root, p string, noFetch bool
 // SubmoduleAdd clones a repository and registers it as a submodule.
 //
 // The submodule name equals p. A non-empty branch is recorded as the native
-// "branch" key and checked out.
+// "branch" key and checked out. The invocation is Online.
 //
 // Context: root is the top level of the superproject; p is relative to it.
 // Return: nil, or *Error. When progress is non-nil, the output of git is
@@ -69,7 +69,8 @@ func (r *Runner) SubmoduleAdd(ctx context.Context, root, url, p, branch string,
 	if branch != "" {
 		args = append(args, "-b", branch)
 	}
-	return r.stream(ctx, Cmd{Dir: root, Args: append(args, "--", url, p)}, progress)
+	c := Cmd{Dir: root, Args: append(args, "--", url, p), Env: Online.env()}
+	return r.stream(ctx, c, progress)
 }
 
 // stream runs c and sends the output and diagnostics of git to progress when

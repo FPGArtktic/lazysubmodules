@@ -40,7 +40,7 @@ const (
 // Context: dir must be a working tree.
 // Return: true when tracked content differs from HEAD, or *Error.
 func (r *Runner) IsDirty(ctx context.Context, dir string) (bool, error) {
-	out, err := r.Run(ctx, dir, "status", "--porcelain=v2", "--untracked-files=no",
+	out, err := r.runOffline(ctx, dir, "status", "--porcelain=v2", "--untracked-files=no",
 		"--ignore-submodules=none")
 	if err != nil {
 		return false, err
@@ -117,7 +117,7 @@ func (r *Runner) IsGitDir(ctx context.Context, dir string) (bool, error) {
 	case !fi.IsDir():
 		return false, nil
 	}
-	out, err := r.Run(ctx, dir, "rev-parse", "--absolute-git-dir")
+	out, err := r.runOffline(ctx, dir, "rev-parse", "--absolute-git-dir")
 	if fatalWith(err, "not a git repository", "cannot chdir to ") {
 		return false, nil
 	}
@@ -169,20 +169,28 @@ func realPath(p string) (string, error) {
 
 // Checkout detaches HEAD at a commit and updates the working tree.
 //
-// Git 2.39 does not accept "--end-of-options" here, so a commit that could be
-// taken for an option (such as "-f", which would discard local changes) is
+// In a partial clone, the objects of the commit may be missing; Online
+// fetches them from the promisor remote, Offline fails instead. Git 2.39
+// does not accept "--end-of-options" here, so a commit that could be taken
+// for an option (such as "-f", which would discard local changes) is
 // refused before git runs.
 //
 // Context: dir must be a working tree; commit must exist locally.
 // Return: nil, an error wrapping ErrInvalidRefName for an empty commit or one
 // starting with "-", or *Error (for example when local changes would be
-// lost).
-func (r *Runner) Checkout(ctx context.Context, dir, commit string) error {
+// lost, or when objects are missing Offline).
+func (r *Runner) Checkout(ctx context.Context, dir, commit string, network Network) error {
 	if commit == "" || strings.HasPrefix(commit, "-") {
 		return fmt.Errorf("checkout: %w: %q", ErrInvalidRefName, commit)
 	}
-	_, err := r.Run(ctx, dir, "-c", "advice.detachedHead=false",
-		"checkout", "--quiet", "--detach", commit, "--")
+	_, err := r.Exec(ctx, Cmd{
+		Dir: dir,
+		Args: []string{
+			"-c", "advice.detachedHead=false",
+			"checkout", "--quiet", "--detach", commit, "--",
+		},
+		Env: network.env(),
+	})
 	return err
 }
 
@@ -202,7 +210,7 @@ func (r *Runner) Add(ctx context.Context, dir string, force bool, paths ...strin
 		args = append(args, "--force")
 	}
 	args = append(append(args, "--"), paths...)
-	_, err := r.Run(ctx, dir, args...)
+	_, err := r.runOffline(ctx, dir, args...)
 	return err
 }
 
@@ -222,7 +230,7 @@ func (r *Runner) Remove(ctx context.Context, dir string, force bool, paths ...st
 		args = append(args, "-f")
 	}
 	args = append(append(args, "--"), paths...)
-	_, err := r.Run(ctx, dir, args...)
+	_, err := r.runOffline(ctx, dir, args...)
 	return err
 }
 
@@ -234,7 +242,7 @@ func (r *Runner) Remove(ctx context.Context, dir string, force bool, paths ...st
 // Context: dir must be a working tree.
 // Return: paths relative to the top level, or *Error.
 func (r *Runner) StagedPaths(ctx context.Context, dir string) ([]string, error) {
-	out, err := r.Run(ctx, dir, "diff", "--cached", "--name-only", "--no-renames",
+	out, err := r.runOffline(ctx, dir, "diff", "--cached", "--name-only", "--no-renames",
 		"--no-relative", "--ignore-submodules=none", "-z")
 	if err != nil {
 		return nil, err
@@ -254,7 +262,8 @@ func (r *Runner) HasStaged(ctx context.Context, dir string) (bool, error) {
 // Commit records the index as a new commit with a Signed-off-by trailer.
 //
 // The message is passed on standard input. Hooks and signing run as
-// configured.
+// configured. Lazy fetching is disabled, but the transports stay available
+// to the hooks.
 //
 // Context: dir must be a working tree with a configured identity.
 // Return: nil, or *Error.
@@ -273,7 +282,7 @@ func (r *Runner) Commit(ctx context.Context, dir, message string) error {
 // Return: the commit SHA, an error wrapping ErrRefNotFound when the index has
 // no gitlink at p, or *Error.
 func (r *Runner) IndexGitlink(ctx context.Context, dir, p string) (string, error) {
-	out, err := r.Run(ctx, dir, literalPathspecs, "ls-files", "--stage", "-z", "--", p)
+	out, err := r.runOffline(ctx, dir, literalPathspecs, "ls-files", "--stage", "-z", "--", p)
 	if err != nil {
 		return "", err
 	}
@@ -294,14 +303,22 @@ func (r *Runner) IndexGitlink(ctx context.Context, dir, p string) (string, error
 //
 // Context: dir must be the top level of a working tree; p is relative to it.
 // Return: the commit SHA, an error wrapping ErrRefNotFound when rev does not
-// exist (for example an unborn HEAD) or its tree has no gitlink at p, or
-// *Error.
+// exist (for example an unborn HEAD) or its tree has no gitlink at p, an
+// error wrapping ErrInvalidRefName when rev starts with "-", or *Error, for
+// example when rev names no tree or the tree is missing from a partial
+// clone.
 func (r *Runner) TreeGitlink(ctx context.Context, dir, rev, p string) (string, error) {
-	tree, err := r.verifyRev(ctx, dir, rev, rev+"^{tree}")
+	if strings.HasPrefix(rev, "-") {
+		return "", fmt.Errorf("tree: %w: %q", ErrInvalidRefName, rev)
+	}
+	// Only the object named by rev is verified: peeling it to a tree would
+	// report a tree missing from a partial clone as not found, while ls-tree
+	// reports it as an error.
+	object, err := r.verifyRev(ctx, dir, rev, rev)
 	if err != nil {
 		return "", err
 	}
-	out, err := r.Run(ctx, dir, literalPathspecs, "ls-tree", "-z", tree, "--", p)
+	out, err := r.runOffline(ctx, dir, literalPathspecs, "ls-tree", "-z", object, "--", p)
 	if err != nil {
 		return "", err
 	}
@@ -334,7 +351,7 @@ func (r *Runner) Log(ctx context.Context, dir string, limit int, revs ...string)
 	}
 	args = append(args, "--end-of-options")
 	args = append(append(args, revs...), "--")
-	out, err := r.Run(ctx, dir, args...)
+	out, err := r.runOffline(ctx, dir, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -362,5 +379,5 @@ func (r *Runner) SubmoduleDiff(ctx context.Context, dir, p string) (string, erro
 	default:
 		args = append(args, "HEAD")
 	}
-	return r.Run(ctx, dir, append(args, "--", p)...)
+	return r.runOffline(ctx, dir, append(args, "--", p)...)
 }

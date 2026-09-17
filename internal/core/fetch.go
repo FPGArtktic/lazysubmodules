@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 
+	"github.com/FPGArtktic/lazysubmodules/internal/git"
 	"github.com/FPGArtktic/lazysubmodules/internal/manifest"
 )
 
@@ -109,7 +110,7 @@ func (r *Repo) sync(ctx context.Context, sub manifest.Submodule, worktree string
 	init, online bool, progress io.Writer,
 ) error {
 	if init {
-		if err := r.git.SubmoduleInit(ctx, r.root, sub.Path, !online, progress); err != nil {
+		if err := r.git.SubmoduleInit(ctx, r.root, sub.Path, git.Network(online), progress); err != nil {
 			return err
 		}
 		populated, err := r.git.IsWorktreeRoot(ctx, worktree)

@@ -68,7 +68,7 @@ func TestIsDirtyNestedSubmodule(t *testing.T) {
 	check("initialized", false)
 
 	// Checking out an older outer commit leaves inner at the newer commit.
-	if err := r.Checkout(ctx, outerDir, "HEAD~1"); err != nil {
+	if err := r.Checkout(ctx, outerDir, "HEAD~1", git.Offline); err != nil {
 		t.Fatal(err)
 	}
 	check("nested submodule at another commit", false)
@@ -245,7 +245,7 @@ func TestIsGitDir(t *testing.T) {
 	}
 	check("deinitialized", map[string]bool{modules: true})
 	// Git cannot enter the working tree that the repository names.
-	if err := r.SubmoduleInit(ctx, f.super.Dir, f.path, true, nil); err != nil {
+	if err := r.SubmoduleInit(ctx, f.super.Dir, f.path, git.Offline, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.RemoveAll(f.sub); err != nil {
@@ -341,7 +341,7 @@ func TestCheckout(t *testing.T) {
 			r := gittest.Runner(t)
 			ctx := t.Context()
 			target := f.commits[gittest.TagV100]
-			if err := r.Checkout(ctx, f.sub, target); err != nil {
+			if err := r.Checkout(ctx, f.sub, target, git.Offline); err != nil {
 				t.Fatal(err)
 			}
 			if head, err := r.Head(ctx, f.sub); err != nil || head != target {
@@ -351,7 +351,7 @@ func TestCheckout(t *testing.T) {
 			if branch != "HEAD" {
 				t.Errorf("HEAD is not detached: %q", branch)
 			}
-			err := r.Checkout(ctx, f.sub, strings.Repeat("1", hexLen(format)))
+			err := r.Checkout(ctx, f.sub, strings.Repeat("1", hexLen(format)), git.Offline)
 			if _, ok := errors.AsType[*git.Error](err); !ok {
 				t.Errorf("Checkout(missing) = %v, want *git.Error", err)
 			}
@@ -364,7 +364,7 @@ func TestCheckoutRefusesToLoseChanges(t *testing.T) {
 	f := newFixture(t, gittest.SHA1)
 	r := gittest.Runner(t)
 	f.super.MakeDirty(t, f.path)
-	err := r.Checkout(t.Context(), f.sub, f.commits[gittest.TagRC1])
+	err := r.Checkout(t.Context(), f.sub, f.commits[gittest.TagRC1], git.Offline)
 	if _, ok := errors.AsType[*git.Error](err); !ok {
 		t.Errorf("Checkout(dirty) = %v, want *git.Error", err)
 	}
@@ -376,9 +376,12 @@ func TestCheckoutRejectsOptions(t *testing.T) {
 	r := gittest.Runner(t)
 	ctx := t.Context()
 	f.super.MakeDirty(t, f.path)
-	for _, commit := range []string{"-f", "--force", "-", ""} {
-		if err := r.Checkout(ctx, f.sub, commit); !errors.Is(err, git.ErrInvalidRefName) {
-			t.Errorf("Checkout(%q) = %v, want ErrInvalidRefName", commit, err)
+	for _, network := range []git.Network{git.Offline, git.Online} {
+		for _, commit := range []string{"-f", "--force", "-", ""} {
+			err := r.Checkout(ctx, f.sub, commit, network)
+			if !errors.Is(err, git.ErrInvalidRefName) {
+				t.Errorf("Checkout(%q, %t) = %v, want ErrInvalidRefName", commit, network, err)
+			}
 		}
 	}
 	if dirty, err := r.IsDirty(ctx, f.sub); err != nil || !dirty {
@@ -683,9 +686,11 @@ func TestTreeGitlink(t *testing.T) {
 			gittest.Git(t, f.sub, "checkout", "--quiet", f.commits[gittest.TagRC1])
 			gittest.Git(t, f.super.Dir, "add", f.path)
 			for _, rev := range []string{"HEAD", added, "main"} {
-				got, err := r.TreeGitlink(ctx, f.super.Dir, rev, f.path)
-				if err != nil || got != tip {
-					t.Errorf("TreeGitlink(%s) = %q, %v; want %q", rev, got, err, tip)
+				for _, p := range []string{f.path, f.path + "/", "./" + f.path} {
+					got, err := r.TreeGitlink(ctx, f.super.Dir, rev, p)
+					if err != nil || got != tip {
+						t.Errorf("TreeGitlink(%s, %q) = %q, %v; want %q", rev, p, got, err, tip)
+					}
 				}
 			}
 
@@ -693,6 +698,7 @@ func TestTreeGitlink(t *testing.T) {
 				{"HEAD~1", f.path}, // before the submodule was added
 				{"HEAD", "README"}, // not a gitlink
 				{"HEAD", "missing"},
+				{"HEAD", "li"},
 				{"nope", f.path},
 			}
 			for _, tt := range notFound {
@@ -701,6 +707,18 @@ func TestTreeGitlink(t *testing.T) {
 					t.Errorf("TreeGitlink(%s, %s) = %q, %v; want ErrRefNotFound",
 						tt[0], tt[1], got, err)
 				}
+			}
+			for _, rev := range []string{"-", "--git-dir", "-HEAD"} {
+				got, err := r.TreeGitlink(ctx, f.super.Dir, rev, f.path)
+				if got != "" || !errors.Is(err, git.ErrInvalidRefName) {
+					t.Errorf("TreeGitlink(%s) = %q, %v; want ErrInvalidRefName", rev, got, err)
+				}
+			}
+			// A revision that names a blob has no tree.
+			blob := gittest.Git(t, f.super.Dir, "rev-parse", "HEAD:README")
+			got, err := r.TreeGitlink(ctx, f.super.Dir, blob, f.path)
+			if _, ok := errors.AsType[*git.Error](err); !ok || got != "" {
+				t.Errorf("TreeGitlink(blob) = %q, %v; want *git.Error", got, err)
 			}
 		})
 	}
